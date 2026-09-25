@@ -20,9 +20,18 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  useEffect(() => {
-    checkAuthAndLoad();
-  }, []);
+  async function carregarOrcamentos() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("orcamentos")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setOrcamentos(data as Orcamento[]);
+    }
+    setLoading(false);
+  }
 
   async function checkAuthAndLoad() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -36,18 +45,10 @@ export default function AdminPage() {
     carregarOrcamentos();
   }
 
-  async function carregarOrcamentos() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("orcamentos")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      setOrcamentos(data as Orcamento[]);
-    }
-    setLoading(false);
-  }
+  useEffect(() => {
+    checkAuthAndLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function atualizarStatus(id: string, novoStatus: string) {
     await supabase.from("orcamentos").update({ status: novoStatus }).eq("id", id);
