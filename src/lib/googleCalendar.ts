@@ -24,10 +24,13 @@ async function getAuthorizedClient() {
 
   oauth2Client.on("tokens", async (newTokens) => {
     const merged = { ...tokens, ...newTokens };
-    await supabaseAdmin.from("configuracoes").upsert({
-      chave: "google_calendar_tokens",
-      valor: JSON.stringify(merged),
-    });
+    await supabaseAdmin.from("configuracoes").upsert(
+      {
+        chave: "google_calendar_tokens",
+        valor: JSON.stringify(merged),
+      },
+      { onConflict: "chave" }
+    );
   });
 
   return oauth2Client;
@@ -69,4 +72,49 @@ export async function createCalendarEvent(params: {
   });
 
   return res.data.id;
+}
+
+export async function getAvailableSlots(dateStr: string): Promise<string[]> {
+  // dateStr no formato YYYY-MM-DD
+  const day = new Date(dateStr + "T00:00:00");
+
+  // Não atende domingo
+  if (day.getDay() === 0) return [];
+
+  const businessHours = [9, 11, 13, 15]; // horários de início (2h por serviço)
+  const auth = await getAuthorizedClient();
+  const calendar = google.calendar({ version: "v3", auth });
+
+  const dayStart = new Date(dateStr + "T00:00:00");
+  const dayEnd = new Date(dateStr + "T23:59:59");
+
+  const res = await calendar.freebusy.query({
+    requestBody: {
+      timeMin: dayStart.toISOString(),
+      timeMax: dayEnd.toISOString(),
+      items: [{ id: "primary" }],
+    },
+  });
+
+  const busy = res.data.calendars?.primary?.busy || [];
+
+  const slotsLivres: string[] = [];
+
+  for (const hora of businessHours) {
+    const slotStart = new Date(dateStr + "T00:00:00");
+    slotStart.setHours(hora, 0, 0, 0);
+    const slotEnd = new Date(slotStart.getTime() + 2 * 60 * 60000);
+
+    const conflita = busy.some((b) => {
+      const busyStart = new Date(b.start!);
+      const busyEnd = new Date(b.end!);
+      return slotStart < busyEnd && slotEnd > busyStart;
+    });
+
+    if (!conflita && slotStart > new Date()) {
+      slotsLivres.push(slotStart.toISOString());
+    }
+  }
+
+  return slotsLivres;
 }
