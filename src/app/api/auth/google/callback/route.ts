@@ -17,10 +17,13 @@ export async function GET(request: NextRequest) {
 
   const { tokens } = await oauth2Client.getToken(code);
 
-  const { error } = await supabaseAdmin.from("configuracoes").upsert({
+ const { error } = await supabaseAdmin.from("configuracoes").upsert(
+  {
     chave: "google_calendar_tokens",
     valor: JSON.stringify(tokens),
-  });
+  },
+  { onConflict: "chave" }
+);
 
   if (error) {
     console.log("ERRO AO SALVAR TOKEN:", error);
