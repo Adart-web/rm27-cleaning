@@ -19,6 +19,10 @@ export default function AdminPage() {
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [agendandoId, setAgendandoId] = useState<string | null>(null);
+  const [dataHora, setDataHora] = useState("");
+  const [erroAgenda, setErroAgenda] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   async function carregarOrcamentos() {
     setLoading(true);
@@ -50,8 +54,35 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function atualizarStatus(id: string, novoStatus: string) {
-    await supabase.from("orcamentos").update({ status: novoStatus }).eq("id", id);
+  async function recusar(id: string) {
+    await supabase.from("orcamentos").update({ status: "recusado" }).eq("id", id);
+    carregarOrcamentos();
+  }
+
+  async function confirmarAgendamento(id: string) {
+    if (!dataHora) return;
+    setSalvando(true);
+    setErroAgenda("");
+
+    const res = await fetch("/api/calendar/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orcamentoId: id,
+        dataHoraISO: new Date(dataHora).toISOString(),
+      }),
+    });
+
+    const result = await res.json();
+    setSalvando(false);
+
+    if (!res.ok) {
+      setErroAgenda(result.error || "Error scheduling appointment");
+      return;
+    }
+
+    setAgendandoId(null);
+    setDataHora("");
     carregarOrcamentos();
   }
 
@@ -99,6 +130,8 @@ export default function AdminPage() {
                   className={`text-xs font-semibold px-3 py-1 rounded-full ${
                     o.status === "pendente"
                       ? "bg-[#F5EFFF] text-[#8C6EE8]"
+                      : o.status === "agendado"
+                      ? "bg-[#E6F8F6] text-[#2A9D8F]"
                       : o.status === "aprovado"
                       ? "bg-[#E6F8F6] text-[#2A9D8F]"
                       : "bg-red-50 text-red-500"
@@ -114,20 +147,55 @@ export default function AdminPage() {
                 {new Date(o.created_at).toLocaleString()}
               </div>
 
-              {o.status === "pendente" && (
+              {o.status === "pendente" && agendandoId !== o.id && (
                 <div className="flex gap-3 mt-2">
                   <button
-                    onClick={() => atualizarStatus(o.id, "aprovado")}
+                    onClick={() => setAgendandoId(o.id)}
                     className="flex-1 bg-[#71D7CF] text-white rounded-full py-2 text-sm font-semibold"
                   >
-                    Approve
+                    Approve & Schedule
                   </button>
                   <button
-                    onClick={() => atualizarStatus(o.id, "recusado")}
+                    onClick={() => recusar(o.id)}
                     className="flex-1 border border-red-300 text-red-500 rounded-full py-2 text-sm font-semibold"
                   >
                     Decline
                   </button>
+                </div>
+              )}
+
+              {agendandoId === o.id && (
+                <div className="flex flex-col gap-3 mt-2 bg-[#F5EFFF] rounded-xl p-4">
+                  <label className="text-xs font-semibold text-[#233041]">
+                    Date & time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={dataHora}
+                    onChange={(e) => setDataHora(e.target.value)}
+                    className="px-4 py-2 rounded-lg border border-[#E6EAF2]"
+                  />
+                  {erroAgenda && (
+                    <p className="text-sm text-red-600">{erroAgenda}</p>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => confirmarAgendamento(o.id)}
+                      disabled={salvando || !dataHora}
+                      className="flex-1 bg-[#8C6EE8] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
+                    >
+                      {salvando ? "Scheduling..." : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAgendandoId(null);
+                        setErroAgenda("");
+                      }}
+                      className="flex-1 border border-[#E6EAF2] text-[#6B7480] rounded-full py-2 text-sm font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
