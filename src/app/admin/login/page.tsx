@@ -24,7 +24,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      setErro("Invalid email or password.");
+      setErro("E-mail ou senha inválidos.");
       return;
     }
 
@@ -38,12 +38,12 @@ export default function LoginPage() {
         className="w-full max-w-sm flex flex-col gap-4 bg-white border border-[#E6EAF2] rounded-2xl p-8"
       >
         <h1 className="font-[family-name:var(--font-fraunces)] text-2xl text-[#233041] text-center mb-2">
-          RM27 Admin
+          RM27 Painel
         </h1>
 
         <input
           type="email"
-          placeholder="Email"
+          placeholder="E-mail"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="px-4 py-3 rounded-xl border border-[#E6EAF2]"
@@ -51,7 +51,7 @@ export default function LoginPage() {
         />
         <input
           type="password"
-          placeholder="Password"
+          placeholder="Senha"
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
           className="px-4 py-3 rounded-xl border border-[#E6EAF2]"
@@ -65,7 +65,7 @@ export default function LoginPage() {
           disabled={loading}
           className="bg-[#8C6EE8] text-white rounded-full py-3 font-semibold disabled:opacity-50"
         >
-          {loading ? "Signing in..." : "Sign in"}
+          {loading ? "Entrando..." : "Entrar"}
         </button>
       </form>
     </div>

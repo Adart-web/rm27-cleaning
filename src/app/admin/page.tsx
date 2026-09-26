@@ -14,9 +14,29 @@ type Orcamento = {
   created_at: string;
 };
 
+type Agendamento = {
+  id: string;
+  orcamento_id: string;
+  data_hora: string;
+  status: string;
+};
+
+function extrairValor(mensagem: string): number {
+  const match = mensagem.match(/Estimativa:\s*\$([\d.]+)/);
+  return match ? parseFloat(match[1]) : 0;
+}
+
+const statusLabel: Record<string, string> = {
+  pendente: "Pendente",
+  aprovado: "Aprovado",
+  agendado: "Agendado",
+  recusado: "Recusado",
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [agendandoId, setAgendandoId] = useState<string | null>(null);
@@ -24,16 +44,19 @@ export default function AdminPage() {
   const [erroAgenda, setErroAgenda] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  async function carregarOrcamentos() {
+  async function carregarDados() {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data: orcData } = await supabase
       .from("orcamentos")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      setOrcamentos(data as Orcamento[]);
-    }
+    const { data: agData } = await supabase
+      .from("agendamentos")
+      .select("*");
+
+    if (orcData) setOrcamentos(orcData as Orcamento[]);
+    if (agData) setAgendamentos(agData as Agendamento[]);
     setLoading(false);
   }
 
@@ -46,7 +69,7 @@ export default function AdminPage() {
     }
 
     setCheckingAuth(false);
-    carregarOrcamentos();
+    carregarDados();
   }
 
   useEffect(() => {
@@ -56,7 +79,7 @@ export default function AdminPage() {
 
   async function recusar(id: string) {
     await supabase.from("orcamentos").update({ status: "recusado" }).eq("id", id);
-    carregarOrcamentos();
+    carregarDados();
   }
 
   async function confirmarAgendamento(id: string) {
@@ -77,13 +100,13 @@ export default function AdminPage() {
     setSalvando(false);
 
     if (!res.ok) {
-      setErroAgenda(result.error || "Error scheduling appointment");
+      setErroAgenda(result.error || "Erro ao agendar. Tente outro horário.");
       return;
     }
 
     setAgendandoId(null);
     setDataHora("");
-    carregarOrcamentos();
+    carregarDados();
   }
 
   async function logout() {
@@ -92,31 +115,95 @@ export default function AdminPage() {
   }
 
   if (checkingAuth) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return <div className="min-h-screen flex items-center justify-center">Carregando...</div>;
   }
+
+  // Cálculos do dashboard
+  const pendentes = orcamentos.filter((o) => o.status === "pendente").length;
+
+  const hoje = new Date();
+  const em7dias = new Date(hoje.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const agendamentosSemana = agendamentos.filter((a) => {
+    const data = new Date(a.data_hora);
+    return data >= hoje && data <= em7dias && a.status === "confirmado";
+  }).length;
+
+  const mesAtual = hoje.getMonth();
+  const anoAtual = hoje.getFullYear();
+  const receitaMes = orcamentos
+    .filter((o) => {
+      const data = new Date(o.created_at);
+      return (
+        o.status === "agendado" &&
+        data.getMonth() === mesAtual &&
+        data.getFullYear() === anoAtual
+      );
+    })
+    .reduce((soma, o) => soma + extrairValor(o.mensagem), 0);
+
+  const totalOrcamentos = orcamentos.length;
+  const totalAgendados = orcamentos.filter((o) => o.status === "agendado").length;
+  const taxaConversao =
+    totalOrcamentos > 0 ? Math.round((totalAgendados / totalOrcamentos) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-[#FBFCFF] px-8 py-10">
-      <div className="max-w-4xl mx-auto flex flex-col gap-6">
+      <div className="max-w-4xl mx-auto flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <h1 className="font-[family-name:var(--font-fraunces)] text-2xl text-[#233041]">
-            Quote Requests
+            Painel
           </h1>
           <button
             onClick={logout}
             className="text-sm text-[#6B7480] border border-[#E6EAF2] rounded-full px-4 py-2"
           >
-            Sign out
+            Sair
           </button>
         </div>
 
-        {loading && <p className="text-[#6B7480]">Loading...</p>}
+        {/* Cards do Dashboard */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-1">
+            <span className="text-xs text-[#6B7480] font-medium">Orçamentos Pendentes</span>
+            <span className="font-[family-name:var(--font-fraunces)] text-3xl text-[#8C6EE8]">
+              {pendentes}
+            </span>
+          </div>
 
-        {!loading && orcamentos.length === 0 && (
-          <p className="text-[#6B7480]">No quote requests yet.</p>
-        )}
+          <div className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-1">
+            <span className="text-xs text-[#6B7480] font-medium">Esta Semana</span>
+            <span className="font-[family-name:var(--font-fraunces)] text-3xl text-[#69A9F4]">
+              {agendamentosSemana}
+            </span>
+          </div>
 
+          <div className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-1">
+            <span className="text-xs text-[#6B7480] font-medium">Receita (mês)</span>
+            <span className="font-[family-name:var(--font-fraunces)] text-3xl text-[#71D7CF]">
+              ${receitaMes.toFixed(0)}
+            </span>
+          </div>
+
+          <div className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-1">
+            <span className="text-xs text-[#6B7480] font-medium">Taxa de Conversão</span>
+            <span className="font-[family-name:var(--font-fraunces)] text-3xl text-[#F39BC5]">
+              {taxaConversao}%
+            </span>
+          </div>
+        </div>
+
+        {/* Lista de orçamentos */}
         <div className="flex flex-col gap-4">
+          <h2 className="font-[family-name:var(--font-fraunces)] text-xl text-[#233041]">
+            Solicitações de Orçamento
+          </h2>
+
+          {loading && <p className="text-[#6B7480]">Carregando...</p>}
+
+          {!loading && orcamentos.length === 0 && (
+            <p className="text-[#6B7480]">Nenhuma solicitação ainda.</p>
+          )}
+
           {orcamentos.map((o) => (
             <div
               key={o.id}
@@ -137,14 +224,14 @@ export default function AdminPage() {
                       : "bg-red-50 text-red-500"
                   }`}
                 >
-                  {o.status}
+                  {statusLabel[o.status] || o.status}
                 </span>
               </div>
 
               <div className="text-sm text-[#233041]">{o.tamanho_imovel}</div>
               <div className="text-sm text-[#6B7480]">{o.mensagem}</div>
               <div className="text-xs text-[#6B7480]">
-                {new Date(o.created_at).toLocaleString()}
+                {new Date(o.created_at).toLocaleString("pt-BR")}
               </div>
 
               {o.status === "pendente" && agendandoId !== o.id && (
@@ -153,13 +240,13 @@ export default function AdminPage() {
                     onClick={() => setAgendandoId(o.id)}
                     className="flex-1 bg-[#71D7CF] text-white rounded-full py-2 text-sm font-semibold"
                   >
-                    Approve & Schedule
+                    Aprovar e Agendar
                   </button>
                   <button
                     onClick={() => recusar(o.id)}
                     className="flex-1 border border-red-300 text-red-500 rounded-full py-2 text-sm font-semibold"
                   >
-                    Decline
+                    Recusar
                   </button>
                 </div>
               )}
@@ -167,7 +254,7 @@ export default function AdminPage() {
               {agendandoId === o.id && (
                 <div className="flex flex-col gap-3 mt-2 bg-[#F5EFFF] rounded-xl p-4">
                   <label className="text-xs font-semibold text-[#233041]">
-                    Date & time
+                    Data e horário
                   </label>
                   <input
                     type="datetime-local"
@@ -184,7 +271,7 @@ export default function AdminPage() {
                       disabled={salvando || !dataHora}
                       className="flex-1 bg-[#8C6EE8] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
                     >
-                      {salvando ? "Scheduling..." : "Confirm"}
+                      {salvando ? "Agendando..." : "Confirmar"}
                     </button>
                     <button
                       onClick={() => {
@@ -193,7 +280,7 @@ export default function AdminPage() {
                       }}
                       className="flex-1 border border-[#E6EAF2] text-[#6B7480] rounded-full py-2 text-sm font-semibold"
                     >
-                      Cancel
+                      Cancelar
                     </button>
                   </div>
                 </div>
