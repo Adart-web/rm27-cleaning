@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   calcularOrcamento,
   calcularCarpeteEstofados,
@@ -15,6 +15,7 @@ function parseNum(v: string): number {
 }
 
 type TipoServico = QuoteInput["tipoServico"] | "carpet_upholstery";
+type Disponibilidade = Record<string, { manha: boolean; tarde: boolean }>;
 
 const ITENS_CARPETE: { key: keyof CarpetInput; label: string }[] = [
   { key: "quartoCarpete", label: "Bedroom with carpet" },
@@ -34,6 +35,24 @@ const ITENS_CARPETE: { key: keyof CarpetInput; label: string }[] = [
   { key: "colchaoQueen", label: "Mattress — Queen" },
   { key: "colchaoKing", label: "Mattress — King" },
 ];
+
+const MESES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function getDiasDoMes(year: number, month: number): (number | null)[] {
+  const dias: (number | null)[] = [];
+  const primeiroDiaSemana = new Date(year, month - 1, 1).getDay();
+  const totalDias = new Date(year, month, 0).getDate();
+  for (let i = 0; i < primeiroDiaSemana; i++) dias.push(null);
+  for (let d = 1; d <= totalDias; d++) dias.push(d);
+  return dias;
+}
+
+function formatDateStr(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 export default function OrcamentoPage() {
   const [step, setStep] = useState(1);
@@ -69,10 +88,12 @@ export default function OrcamentoPage() {
     colchaoKing: "",
   });
 
+  const hoje = new Date();
+  const [mesAtual, setMesAtual] = useState({ year: hoje.getFullYear(), month: hoje.getMonth() + 1 });
+  const [disponibilidade, setDisponibilidade] = useState<Disponibilidade>({});
+  const [carregandoMes, setCarregandoMes] = useState(false);
   const [dataEscolhida, setDataEscolhida] = useState("");
-  const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
-  const [horarioEscolhido, setHorarioEscolhido] = useState("");
-  const [carregandoHorarios, setCarregandoHorarios] = useState(false);
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<"manha" | "tarde" | "">("");
 
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -80,8 +101,63 @@ export default function OrcamentoPage() {
   const [cidade, setCidade] = useState("");
   const [indicacao, setIndicacao] = useState("");
 
+  useEffect(() => {
+    async function carregar() {
+      setCarregandoMes(true);
+      try {
+        const res = await fetch(`/api/calendar/slots?year=${mesAtual.year}&month=${mesAtual.month}`);
+        const data = await res.json();
+        setDisponibilidade(data.availability || {});
+      } catch (e) {
+        setDisponibilidade({});
+      }
+      setCarregandoMes(false);
+    }
+    carregar();
+  }, [mesAtual]);
+
   function setItemCarpete(key: keyof CarpetInput, v: string) {
     setItensCarpete((prev) => ({ ...prev, [key]: v }));
+  }
+
+  function mesAnteriorDisabled() {
+    return mesAtual.year === hoje.getFullYear() && mesAtual.month === hoje.getMonth() + 1;
+  }
+
+  function irParaMesAnterior() {
+    if (mesAnteriorDisabled()) return;
+    setMesAtual((prev) => {
+      const m = prev.month === 1 ? 12 : prev.month - 1;
+      const y = prev.month === 1 ? prev.year - 1 : prev.year;
+      return { year: y, month: m };
+    });
+  }
+
+  function irParaProximoMes() {
+    setMesAtual((prev) => {
+      const m = prev.month === 12 ? 1 : prev.month + 1;
+      const y = prev.month === 12 ? prev.year + 1 : prev.year;
+      return { year: y, month: m };
+    });
+  }
+
+  function selecionarDia(dateStr: string) {
+    if (!disponibilidade[dateStr]) return;
+    setDataEscolhida(dateStr);
+    setPeriodoEscolhido("");
+  }
+
+  function formatarDataEscolhida() {
+    if (!dataEscolhida) return "";
+    const [y, m, d] = dataEscolhida.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dataFmt = dt.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+    const periodoFmt = periodoEscolhido === "manha" ? "Morning (8am–12pm)" : "Afternoon (1pm–5pm)";
+    return `${dataFmt} — ${periodoFmt}`;
   }
 
   async function calcular() {
@@ -112,25 +188,12 @@ export default function OrcamentoPage() {
     setLoading(false);
   }
 
-  async function buscarHorarios(date: string) {
-    setDataEscolhida(date);
-    setHorarioEscolhido("");
-    setCarregandoHorarios(true);
-    try {
-      const res = await fetch(`/api/calendar/slots?date=${date}`);
-      const data = await res.json();
-      setHorariosDisponiveis(data.slots || []);
-    } catch (e) {
-      setHorariosDisponiveis([]);
-    }
-    setCarregandoHorarios(false);
-  }
-
   async function enviar() {
     setLoading(true);
-    const horarioTexto = horarioEscolhido
-      ? new Date(horarioEscolhido).toLocaleString("en-US")
-      : "Not selected";
+    const horarioTexto =
+      dataEscolhida && periodoEscolhido
+        ? `${dataEscolhida} - ${periodoEscolhido === "manha" ? "Morning (8am-12pm)" : "Afternoon (1pm-5pm)"}`
+        : "Not selected";
 
     const detalhes =
       tipoServico === "carpet_upholstery"
@@ -364,39 +427,92 @@ export default function OrcamentoPage() {
         {step === 5 && (
           <div className="flex flex-col gap-4">
             <label className="font-semibold text-[#233041]">Pick a date</label>
-            <input
-              type="date"
-              min={new Date().toISOString().split("T")[0]}
-              value={dataEscolhida}
-              onChange={(e) => buscarHorarios(e.target.value)}
-              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041]"
-            />
 
-            {carregandoHorarios && <p className="text-sm text-[#6B7480]">Loading available times...</p>}
+            <div className="bg-white border border-[#E6EAF2] rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={irParaMesAnterior}
+                  disabled={mesAnteriorDisabled()}
+                  className="px-3 py-1 rounded-lg text-[#8C6EE8] disabled:opacity-30 font-semibold"
+                >
+                  ‹
+                </button>
+                <span className="font-semibold text-[#233041]">
+                  {MESES[mesAtual.month - 1]} {mesAtual.year}
+                </span>
+                <button
+                  onClick={irParaProximoMes}
+                  className="px-3 py-1 rounded-lg text-[#8C6EE8] font-semibold"
+                >
+                  ›
+                </button>
+              </div>
 
-            {!carregandoHorarios && dataEscolhida && horariosDisponiveis.length === 0 && (
-              <p className="text-sm text-[#6B7480]">No availability on this date. Try another day.</p>
-            )}
+              <div className="grid grid-cols-7 gap-1 text-center text-xs text-[#9AA5B1] mb-2">
+                {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                  <div key={i}>{d}</div>
+                ))}
+              </div>
 
-            {horariosDisponiveis.length > 0 && (
+              {carregandoMes ? (
+                <p className="text-sm text-[#6B7480] text-center py-6">Loading availability...</p>
+              ) : (
+                <div className="grid grid-cols-7 gap-1">
+                  {getDiasDoMes(mesAtual.year, mesAtual.month).map((dia, idx) => {
+                    if (dia === null) return <div key={`empty-${idx}`} />;
+                    const dateStr = formatDateStr(mesAtual.year, mesAtual.month, dia);
+                    const disp = disponibilidade[dateStr];
+                    const selecionado = dataEscolhida === dateStr;
+                    return (
+                      <button
+                        key={dateStr}
+                        onClick={() => selecionarDia(dateStr)}
+                        disabled={!disp}
+                        className={`aspect-square rounded-lg text-sm font-medium ${
+                          selecionado
+                            ? "bg-[#8C6EE8] text-white"
+                            : disp
+                            ? "bg-[#F5EFFF] text-[#233041]"
+                            : "text-[#D5DAE1]"
+                        }`}
+                      >
+                        {dia}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {dataEscolhida && (
               <div className="flex flex-col gap-2">
-                <label className="font-semibold text-[#233041] text-sm">Available times</label>
-                {horariosDisponiveis.map((slot) => (
+                <label className="font-semibold text-[#233041] text-sm">Choose a period</label>
+                <div className="flex gap-3">
                   <button
-                    key={slot}
-                    onClick={() => setHorarioEscolhido(slot)}
-                    className={`text-left px-5 py-3 rounded-xl border text-[#233041] ${
-                      horarioEscolhido === slot
+                    onClick={() => setPeriodoEscolhido("manha")}
+                    disabled={!disponibilidade[dataEscolhida]?.manha}
+                    className={`flex-1 px-5 py-3 rounded-xl border text-[#233041] disabled:opacity-30 ${
+                      periodoEscolhido === "manha"
                         ? "border-[#8C6EE8] bg-[#F5EFFF]"
                         : "border-[#E6EAF2] bg-white"
                     }`}
                   >
-                    {new Date(slot).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    Morning
+                    <div className="text-xs text-[#6B7480]">8am – 12pm</div>
                   </button>
-                ))}
+                  <button
+                    onClick={() => setPeriodoEscolhido("tarde")}
+                    disabled={!disponibilidade[dataEscolhida]?.tarde}
+                    className={`flex-1 px-5 py-3 rounded-xl border text-[#233041] disabled:opacity-30 ${
+                      periodoEscolhido === "tarde"
+                        ? "border-[#8C6EE8] bg-[#F5EFFF]"
+                        : "border-[#E6EAF2] bg-white"
+                    }`}
+                  >
+                    Afternoon
+                    <div className="text-xs text-[#6B7480]">1pm – 5pm</div>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -409,7 +525,7 @@ export default function OrcamentoPage() {
               </button>
               <button
                 onClick={() => setStep(6)}
-                disabled={!horarioEscolhido}
+                disabled={!periodoEscolhido}
                 className="flex-1 bg-[#8C6EE8] text-white rounded-full py-3 font-semibold disabled:opacity-50"
               >
                 Next
@@ -422,16 +538,7 @@ export default function OrcamentoPage() {
           <div className="flex flex-col gap-5">
             <div className="bg-[#F5EFFF] rounded-2xl p-5 text-center">
               <div className="text-sm text-[#6B7480]">Selected time</div>
-              <div className="font-semibold text-[#233041]">
-                {horarioEscolhido &&
-                  new Date(horarioEscolhido).toLocaleString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-              </div>
+              <div className="font-semibold text-[#233041]">{formatarDataEscolhida()}</div>
             </div>
 
             <label className="font-semibold text-[#233041]">Your info</label>
