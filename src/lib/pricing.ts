@@ -19,7 +19,26 @@ export type QuoteInput = {
   };
 };
 
-async function getRegras(): Promise<Record<string, number>> {
+export type CarpetInput = {
+  quartoCarpete: number;
+  salaCarpete: number;
+  corredor: number;
+  escada1Lance: number;
+  escada2Lances: number;
+  tapetePequeno: number;
+  tapeteMedio: number;
+  tapeteGrande: number;
+  sofa2Lugares: number;
+  sofa3Lugares: number;
+  sofaSectional: number;
+  cadeiras: number;
+  poltronas: number;
+  colchaoTwin: number;
+  colchaoQueen: number;
+  colchaoKing: number;
+};
+
+export async function getRegras(): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('regras_precificacao')
     .select('chave, valor');
@@ -88,6 +107,30 @@ export async function calcularOrcamento(input: QuoteInput) {
   if (a.areaExterna === 'pequena') total += r.addon_area_externa_pequena;
   else if (a.areaExterna === 'media') total += r.addon_area_externa_media;
   else if (a.areaExterna === 'grande') total += r.addon_area_externa_grande;
+
+  return Math.round(total * 100) / 100;
+}
+
+export async function calcularCarpeteEstofados(input: CarpetInput) {
+  const r = await getRegras();
+
+  let total = 0;
+  total += input.quartoCarpete * r.carpete_quarto;
+  total += input.salaCarpete * r.carpete_sala;
+  total += input.corredor * r.carpete_corredor;
+  total += input.escada1Lance * r.carpete_escada_1lance;
+  total += input.escada2Lances * r.carpete_escada_2lances;
+  total += input.tapetePequeno * r.carpete_tapete_pequeno;
+  total += input.tapeteMedio * r.carpete_tapete_medio;
+  total += input.tapeteGrande * r.carpete_tapete_grande;
+  total += input.sofa2Lugares * r.estofado_sofa_2lugares;
+  total += input.sofa3Lugares * r.estofado_sofa_3lugares;
+  total += input.sofaSectional * r.estofado_sofa_sectional;
+  total += input.cadeiras * r.estofado_cadeira;
+  total += input.poltronas * r.estofado_poltrona;
+  total += input.colchaoTwin * r.estofado_colchao_twin;
+  total += input.colchaoQueen * r.estofado_colchao_queen;
+  total += input.colchaoKing * r.estofado_colchao_king;
 
   return Math.round(total * 100) / 100;
 }

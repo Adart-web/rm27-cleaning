@@ -1,8 +1,39 @@
 "use client";
 
 import { useState } from "react";
-import { calcularOrcamento, type QuoteInput } from "@/lib/pricing";
+import {
+  calcularOrcamento,
+  calcularCarpeteEstofados,
+  type QuoteInput,
+  type CarpetInput,
+} from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
+
+function parseNum(v: string): number {
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
+type TipoServico = QuoteInput["tipoServico"] | "carpet_upholstery";
+
+const ITENS_CARPETE: { key: keyof CarpetInput; label: string }[] = [
+  { key: "quartoCarpete", label: "Bedroom with carpet" },
+  { key: "salaCarpete", label: "Living room with carpet" },
+  { key: "corredor", label: "Hallway" },
+  { key: "escada1Lance", label: "Stairs — 1 flight" },
+  { key: "escada2Lances", label: "Stairs — 2 flights" },
+  { key: "tapetePequeno", label: "Small rug" },
+  { key: "tapeteMedio", label: "Medium rug" },
+  { key: "tapeteGrande", label: "Large rug" },
+  { key: "sofa2Lugares", label: "Sofa — 2 seats" },
+  { key: "sofa3Lugares", label: "Sofa — 3 seats" },
+  { key: "sofaSectional", label: "Sectional sofa" },
+  { key: "cadeiras", label: "Chairs" },
+  { key: "poltronas", label: "Armchair" },
+  { key: "colchaoTwin", label: "Mattress — Twin" },
+  { key: "colchaoQueen", label: "Mattress — Queen" },
+  { key: "colchaoKing", label: "Mattress — King" },
+];
 
 export default function OrcamentoPage() {
   const [step, setStep] = useState(1);
@@ -10,14 +41,33 @@ export default function OrcamentoPage() {
   const [enviado, setEnviado] = useState(false);
   const [estimativa, setEstimativa] = useState<number | null>(null);
 
-  const [tipoServico, setTipoServico] = useState<QuoteInput["tipoServico"]>("regular");
+  const [tipoServico, setTipoServico] = useState<TipoServico>("regular");
   const [frequencia, setFrequencia] = useState<NonNullable<QuoteInput["frequencia"]>>("quinzenal");
-  const [sf, setSf] = useState(1500);
-  const [pets, setPets] = useState(0);
-  const [criancas, setCriancas] = useState(0);
+  const [sf, setSf] = useState("1500");
+  const [pets, setPets] = useState("");
+  const [criancas, setCriancas] = useState("");
   const [forno, setForno] = useState(false);
   const [geladeira, setGeladeira] = useState(false);
   const [areaExterna, setAreaExterna] = useState<"pequena" | "media" | "grande" | null>(null);
+
+  const [itensCarpete, setItensCarpete] = useState<Record<keyof CarpetInput, string>>({
+    quartoCarpete: "",
+    salaCarpete: "",
+    corredor: "",
+    escada1Lance: "",
+    escada2Lances: "",
+    tapetePequeno: "",
+    tapeteMedio: "",
+    tapeteGrande: "",
+    sofa2Lugares: "",
+    sofa3Lugares: "",
+    sofaSectional: "",
+    cadeiras: "",
+    poltronas: "",
+    colchaoTwin: "",
+    colchaoQueen: "",
+    colchaoKing: "",
+  });
 
   const [dataEscolhida, setDataEscolhida] = useState("");
   const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
@@ -27,21 +77,35 @@ export default function OrcamentoPage() {
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [indicacao, setIndicacao] = useState("");
+
+  function setItemCarpete(key: keyof CarpetInput, v: string) {
+    setItensCarpete((prev) => ({ ...prev, [key]: v }));
+  }
 
   async function calcular() {
     setLoading(true);
     try {
-      const valor = await calcularOrcamento({
-        tipoServico,
-        frequencia,
-        sf,
-        pets,
-        criancas,
-        primeiraVisitaRegularSemDeep: tipoServico === "regular",
-        addons: { forno, geladeira, areaExterna },
-      });
+      let valor: number;
+      if (tipoServico === "carpet_upholstery") {
+        const parsed = Object.fromEntries(
+          Object.entries(itensCarpete).map(([k, v]) => [k, parseNum(v)])
+        ) as CarpetInput;
+        valor = await calcularCarpeteEstofados(parsed);
+      } else {
+        valor = await calcularOrcamento({
+          tipoServico,
+          frequencia,
+          sf: parseNum(sf),
+          pets: parseNum(pets),
+          criancas: parseNum(criancas),
+          primeiraVisitaRegularSemDeep: tipoServico === "regular",
+          addons: { forno, geladeira, areaExterna },
+        });
+      }
       setEstimativa(valor);
-      setStep(4);
+      setStep(5);
     } catch (e) {
       alert("Erro ao calcular. Tenta de novo.");
     }
@@ -68,13 +132,20 @@ export default function OrcamentoPage() {
       ? new Date(horarioEscolhido).toLocaleString("en-US")
       : "Not selected";
 
+    const detalhes =
+      tipoServico === "carpet_upholstery"
+        ? `Itens: ${ITENS_CARPETE.filter((i) => parseNum(itensCarpete[i.key]) > 0)
+            .map((i) => `${i.label} x${parseNum(itensCarpete[i.key])}`)
+            .join(", ")}`
+        : `Pets: ${parseNum(pets)} | Crianças: ${parseNum(criancas)} | Forno: ${forno} | Geladeira: ${geladeira} | Área externa: ${areaExterna || "não"}`;
+
     const { error } = await supabase.from("orcamentos").insert({
       tipo: tipoServico === "regular" ? "fixo" : "pontual",
-      tamanho_imovel: `${sf} SF`,
+      tamanho_imovel: tipoServico === "carpet_upholstery" ? null : `${sf || "0"} SF`,
       frequencia: tipoServico === "regular" ? frequencia : null,
       status: "pendente",
       idioma: "en",
-      mensagem: `Estimativa: $${estimativa} | Pets: ${pets} | Crianças: ${criancas} | Forno: ${forno} | Geladeira: ${geladeira} | Área externa: ${areaExterna || "não"} | Data desejada: ${horarioTexto} | Nome: ${nome} | Tel: ${telefone} | Email: ${email}`,
+      mensagem: `Serviço: ${tipoServico} | Estimativa: $${estimativa} | ${detalhes} | Cidade: ${cidade || "não informado"} | Indicação: ${indicacao || "não informado"} | Data desejada: ${horarioTexto} | Nome: ${nome} | Tel: ${telefone} | Email: ${email}`,
     });
     setLoading(false);
     if (error) {
@@ -113,11 +184,12 @@ export default function OrcamentoPage() {
               { v: "regular", label: "Regular Cleaning" },
               { v: "deep", label: "Deep Cleaning" },
               { v: "move_in_out", label: "Move In / Move Out" },
+              { v: "carpet_upholstery", label: "Carpet & Upholstery Cleaning" },
             ].map((opt) => (
               <button
                 key={opt.v}
-                onClick={() => setTipoServico(opt.v as QuoteInput["tipoServico"])}
-                className={`text-left px-5 py-4 rounded-xl border ${
+                onClick={() => setTipoServico(opt.v as TipoServico)}
+                className={`text-left px-5 py-4 rounded-xl border text-[#233041] ${
                   tipoServico === opt.v
                     ? "border-[#8C6EE8] bg-[#F5EFFF]"
                     : "border-[#E6EAF2] bg-white"
@@ -127,7 +199,7 @@ export default function OrcamentoPage() {
               </button>
             ))}
             <button
-              onClick={() => setStep(2)}
+              onClick={() => setStep(tipoServico === "carpet_upholstery" ? 10 : 2)}
               className="mt-4 bg-[#8C6EE8] text-white rounded-full py-3 font-semibold"
             >
               Next
@@ -148,7 +220,7 @@ export default function OrcamentoPage() {
                   <button
                     key={opt.v}
                     onClick={() => setFrequencia(opt.v as typeof frequencia)}
-                    className={`text-left px-5 py-4 rounded-xl border ${
+                    className={`text-left px-5 py-4 rounded-xl border text-[#233041] ${
                       frequencia === opt.v
                         ? "border-[#8C6EE8] bg-[#F5EFFF]"
                         : "border-[#E6EAF2] bg-white"
@@ -163,9 +235,11 @@ export default function OrcamentoPage() {
             <label className="font-semibold text-[#233041] mt-2">Home size (square feet)</label>
             <input
               type="number"
+              inputMode="numeric"
+              placeholder="e.g. 1500"
               value={sf}
-              onChange={(e) => setSf(Number(e.target.value))}
-              className="px-5 py-4 rounded-xl border border-[#E6EAF2]"
+              onChange={(e) => setSf(e.target.value)}
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
             />
 
             <div className="flex gap-4">
@@ -173,20 +247,24 @@ export default function OrcamentoPage() {
                 <label className="font-semibold text-[#233041] text-sm">Pets</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={0}
+                  placeholder="0"
                   value={pets}
-                  onChange={(e) => setPets(Number(e.target.value))}
-                  className="w-full px-5 py-3 rounded-xl border border-[#E6EAF2]"
+                  onChange={(e) => setPets(e.target.value)}
+                  className="w-full px-5 py-3 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
                 />
               </div>
               <div className="flex-1">
                 <label className="font-semibold text-[#233041] text-sm">Kids</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={0}
+                  placeholder="0"
                   value={criancas}
-                  onChange={(e) => setCriancas(Number(e.target.value))}
-                  className="w-full px-5 py-3 rounded-xl border border-[#E6EAF2]"
+                  onChange={(e) => setCriancas(e.target.value)}
+                  className="w-full px-5 py-3 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
                 />
               </div>
             </div>
@@ -206,11 +284,11 @@ export default function OrcamentoPage() {
           <div className="flex flex-col gap-4">
             <label className="font-semibold text-[#233041]">Optional add-ons</label>
 
-            <label className="flex items-center gap-3 px-5 py-4 rounded-xl border border-[#E6EAF2]">
+            <label className="flex items-center gap-3 px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041]">
               <input type="checkbox" checked={forno} onChange={(e) => setForno(e.target.checked)} />
               Oven interior (+$45)
             </label>
-            <label className="flex items-center gap-3 px-5 py-4 rounded-xl border border-[#E6EAF2]">
+            <label className="flex items-center gap-3 px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041]">
               <input type="checkbox" checked={geladeira} onChange={(e) => setGeladeira(e.target.checked)} />
               Fridge interior (+$45)
             </label>
@@ -225,7 +303,7 @@ export default function OrcamentoPage() {
               <button
                 key={String(opt.v)}
                 onClick={() => setAreaExterna(opt.v as typeof areaExterna)}
-                className={`text-left px-5 py-3 rounded-xl border ${
+                className={`text-left px-5 py-3 rounded-xl border text-[#233041] ${
                   areaExterna === opt.v ? "border-[#8C6EE8] bg-[#F5EFFF]" : "border-[#E6EAF2] bg-white"
                 }`}
               >
@@ -248,22 +326,38 @@ export default function OrcamentoPage() {
           </div>
         )}
 
-        {step === 4 && (
-          <div className="flex flex-col gap-5">
-            <div className="bg-[#F5EFFF] rounded-2xl p-6 text-center">
-              <div className="text-sm text-[#6B7480]">Estimated price</div>
-              <div className="font-[family-name:var(--font-fraunces)] text-4xl text-[#8C6EE8]">
-                ${estimativa}
+        {step === 10 && (
+          <div className="flex flex-col gap-4">
+            <label className="font-semibold text-[#233041]">
+              Select the quantity of each item
+            </label>
+            {ITENS_CARPETE.map((item) => (
+              <div key={item.key} className="flex items-center justify-between gap-4">
+                <label className="text-[#233041] text-sm flex-1">{item.label}</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  placeholder="0"
+                  value={itensCarpete[item.key]}
+                  onChange={(e) => setItemCarpete(item.key, e.target.value)}
+                  className="w-20 px-3 py-2 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1] text-center"
+                />
               </div>
-              <div className="text-xs text-[#6B7480] mt-1">Final price confirmed after review</div>
-            </div>
+            ))}
 
-            <button
-              onClick={() => setStep(5)}
-              className="bg-[#8C6EE8] text-white rounded-full py-3 font-semibold"
-            >
-              Choose a date
-            </button>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setStep(1)} className="flex-1 border border-[#8C6EE8] text-[#8C6EE8] rounded-full py-3 font-semibold">
+                Back
+              </button>
+              <button
+                onClick={calcular}
+                disabled={loading}
+                className="flex-1 bg-[#8C6EE8] text-white rounded-full py-3 font-semibold disabled:opacity-50"
+              >
+                {loading ? "Calculating..." : "Continue"}
+              </button>
+            </div>
           </div>
         )}
 
@@ -275,7 +369,7 @@ export default function OrcamentoPage() {
               min={new Date().toISOString().split("T")[0]}
               value={dataEscolhida}
               onChange={(e) => buscarHorarios(e.target.value)}
-              className="px-5 py-4 rounded-xl border border-[#E6EAF2]"
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041]"
             />
 
             {carregandoHorarios && <p className="text-sm text-[#6B7480]">Loading available times...</p>}
@@ -291,7 +385,7 @@ export default function OrcamentoPage() {
                   <button
                     key={slot}
                     onClick={() => setHorarioEscolhido(slot)}
-                    className={`text-left px-5 py-3 rounded-xl border ${
+                    className={`text-left px-5 py-3 rounded-xl border text-[#233041] ${
                       horarioEscolhido === slot
                         ? "border-[#8C6EE8] bg-[#F5EFFF]"
                         : "border-[#E6EAF2] bg-white"
@@ -307,7 +401,10 @@ export default function OrcamentoPage() {
             )}
 
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setStep(4)} className="flex-1 border border-[#8C6EE8] text-[#8C6EE8] rounded-full py-3 font-semibold">
+              <button
+                onClick={() => setStep(tipoServico === "carpet_upholstery" ? 10 : 3)}
+                className="flex-1 border border-[#8C6EE8] text-[#8C6EE8] rounded-full py-3 font-semibold"
+              >
                 Back
               </button>
               <button
@@ -342,19 +439,31 @@ export default function OrcamentoPage() {
               placeholder="Full name"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="px-5 py-4 rounded-xl border border-[#E6EAF2]"
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
             />
             <input
               placeholder="Phone (WhatsApp)"
               value={telefone}
               onChange={(e) => setTelefone(e.target.value)}
-              className="px-5 py-4 rounded-xl border border-[#E6EAF2]"
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
             />
             <input
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="px-5 py-4 rounded-xl border border-[#E6EAF2]"
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
+            />
+            <input
+              placeholder="City"
+              value={cidade}
+              onChange={(e) => setCidade(e.target.value)}
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
+            />
+            <input
+              placeholder="Who referred you? (optional)"
+              value={indicacao}
+              onChange={(e) => setIndicacao(e.target.value)}
+              className="px-5 py-4 rounded-xl border border-[#E6EAF2] text-[#233041] placeholder:text-[#9AA5B1]"
             />
 
             <div className="flex gap-3 mt-2">
