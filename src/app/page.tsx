@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function Home() {
   return (
     <div className="flex flex-col w-full bg-[#FBFCFF] text-[#233041]">
@@ -19,8 +21,16 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#8C6EE8] via-[#69A9F4] to-[#F39BC5] py-24 px-8 md:px-24">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_20%,rgba(243,155,197,0.55),transparent_55%),radial-gradient(circle_at_12%_85%,rgba(113,215,207,0.5),transparent_50%)]" />
+      <section className="relative overflow-hidden py-24 px-8 md:px-24">
+        <Image
+          src="/images/hero.jpg"
+          alt="RM27 Cleaning professional cleaning a home"
+          fill
+          priority
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#8C6EE8]/85 via-[#69A9F4]/75 to-[#F39BC5]/75" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_20%,rgba(243,155,197,0.45),transparent_55%),radial-gradient(circle_at_12%_85%,rgba(113,215,207,0.4),transparent_50%)]" />
         <div className="relative z-10 max-w-xl flex flex-col gap-6">
           <span className="self-start bg-white/15 backdrop-blur-sm text-white text-xs font-semibold tracking-wide px-4 py-2 rounded-full border border-white/30">Serving homes across the Orlando area</span>
           <h1 className="font-[family-name:var(--font-fraunces)] font-medium text-4xl md:text-6xl leading-tight text-white">A cleaner home, a lighter life.</h1>
@@ -34,7 +44,14 @@ export default function Home() {
 
       {/* About */}
       <section id="about" className="flex flex-col md:flex-row items-center gap-16 px-8 md:px-24 py-24">
-        <div className="flex-1 h-[360px] w-full rounded-3xl bg-gradient-to-br from-[#E6F8F6] via-[#71D7CF] to-[#8C6EE8]" />
+        <div className="relative flex-1 h-[360px] w-full rounded-3xl overflow-hidden">
+          <Image
+            src="/images/about.jpg"
+            alt="RM27 Cleaning team cleaning upholstery"
+            fill
+            className="object-cover"
+          />
+        </div>
         <div className="flex-1 flex flex-col gap-5">
           <span className="text-xs font-bold tracking-wide text-[#F39BC5] uppercase">About RM27 Cleaning</span>
           <h2 className="font-[family-name:var(--font-fraunces)] font-medium text-3xl md:text-4xl text-[#233041] leading-snug">Part of the RM27 family, built on the same care and reliability.</h2>
@@ -51,13 +68,19 @@ export default function Home() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {[
-            { title: "Standard Cleaning", desc: "Dusting, floors, kitchen and bathrooms — the essentials, done right." },
-            { title: "Deep Cleaning", desc: "Baseboards, inside appliances, grout — a thorough reset for your home." },
-            { title: "Move In / Move Out", desc: "A spotless handoff for the home you're leaving or stepping into." },
-            { title: "Recurring Plans", desc: "Weekly, biweekly or monthly — set it once, we take it from there." },
+            { title: "Standard Cleaning", desc: "Dusting, floors, kitchen and bathrooms — the essentials, done right.", image: "/images/service-standard.jpg" },
+{ title: "Deep Cleaning", desc: "Baseboards, inside appliances, grout — a thorough reset for your home.", image: "/images/service-deep.jpg" },
+{ title: "Move In / Move Out", desc: "A spotless handoff for the home you're leaving or stepping into.", image: "/images/service-moveinout.jpg" },
+{ title: "Recurring Plans", desc: "Weekly, biweekly or monthly — set it once, we take it from there.", image: "/images/service-recurring.jpg" },
           ].map((s) => (
             <div key={s.title} className="bg-white border border-[#E6EAF2] rounded-2xl overflow-hidden flex flex-col">
-              <div className="h-32 bg-gradient-to-br from-[#E6F8F6] to-[#71D7CF]" />
+              {s.image ? (
+                <div className="relative h-32">
+                  <Image src={s.image} alt={s.title} fill className="object-cover" />
+                </div>
+              ) : (
+                <div className="h-32 bg-gradient-to-br from-[#E6F8F6] to-[#71D7CF]" />
+              )}
               <div className="p-6 flex flex-col gap-2">
                 <div className="font-semibold text-lg text-[#233041]">{s.title}</div>
                 <div className="text-sm text-[#6B7480] leading-relaxed">{s.desc}</div>
