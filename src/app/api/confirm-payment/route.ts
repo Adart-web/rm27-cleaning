@@ -93,7 +93,8 @@ We'll send a reminder closer to the date. Thank you!`;
     }
 
     return NextResponse.json({ success: true, eventId });
-  } catch (e: any) {
-    return NextResponse.json({ error: `Unexpected error: ${e.message}` }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: `Unexpected error: ${message}` }, { status: 500 });
   }
 }

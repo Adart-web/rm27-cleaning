@@ -69,7 +69,8 @@ Once sent, just reply here with the payment receipt/screenshot and we'll confirm
     }
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: `Unexpected error: ${e.message}` }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: `Unexpected error: ${message}` }, { status: 500 });
   }
 }

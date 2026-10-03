@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+type OrcamentoResumo = {
+  nome_cliente: string | null;
+  telefone: string | null;
+  periodo_escolhido: string | null;
+};
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -27,7 +33,7 @@ export async function GET(request: NextRequest) {
   const resultados = [];
 
   for (const ag of agendamentos || []) {
-    const orc = ag.orcamentos as any;
+    const orc = ag.orcamentos as unknown as OrcamentoResumo;
     if (!orc?.telefone) continue;
 
     const periodoFmt = orc.periodo_escolhido === "manha" ? "Morning (8am-12pm)" : "Afternoon (1pm-5pm)";
