@@ -12,6 +12,10 @@ type Orcamento = {
   status: string;
   mensagem: string;
   created_at: string;
+  data_escolhida: string | null;
+  periodo_escolhido: string | null;
+  telefone: string | null;
+  nome_cliente: string | null;
 };
 
 type Agendamento = {
@@ -28,7 +32,7 @@ function extrairValor(mensagem: string): number {
 
 const statusLabel: Record<string, string> = {
   pendente: "Pendente",
-  aprovado: "Aprovado",
+  aguardando_pagamento: "Aguardando Pagamento",
   agendado: "Agendado",
   recusado: "Recusado",
 };
@@ -39,10 +43,8 @@ export default function AdminPage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [agendandoId, setAgendandoId] = useState<string | null>(null);
-  const [dataHora, setDataHora] = useState("");
-  const [erroAgenda, setErroAgenda] = useState("");
-  const [salvando, setSalvando] = useState(false);
+  const [processando, setProcessando] = useState<string | null>(null);
+  const [erro, setErro] = useState<Record<string, string>>({});
 
   async function carregarDados() {
     setLoading(true);
@@ -82,30 +84,45 @@ export default function AdminPage() {
     carregarDados();
   }
 
-  async function confirmarAgendamento(id: string) {
-    if (!dataHora) return;
-    setSalvando(true);
-    setErroAgenda("");
+  async function confirmarOrcamento(id: string) {
+    setProcessando(id);
+    setErro((prev) => ({ ...prev, [id]: "" }));
 
-    const res = await fetch("/api/calendar/schedule", {
+    const res = await fetch("/api/confirm-quote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orcamentoId: id,
-        dataHoraISO: new Date(dataHora).toISOString(),
-      }),
+      body: JSON.stringify({ orcamentoId: id }),
     });
 
     const result = await res.json();
-    setSalvando(false);
+    setProcessando(null);
 
     if (!res.ok) {
-      setErroAgenda(result.error || "Erro ao agendar. Tente outro horário.");
+      setErro((prev) => ({ ...prev, [id]: result.error || "Erro ao confirmar orçamento." }));
       return;
     }
 
-    setAgendandoId(null);
-    setDataHora("");
+    carregarDados();
+  }
+
+  async function confirmarPagamento(id: string) {
+    setProcessando(id);
+    setErro((prev) => ({ ...prev, [id]: "" }));
+
+    const res = await fetch("/api/confirm-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orcamentoId: id }),
+    });
+
+    const result = await res.json();
+    setProcessando(null);
+
+    if (!res.ok) {
+      setErro((prev) => ({ ...prev, [id]: result.error || "Erro ao confirmar pagamento." }));
+      return;
+    }
+
     carregarDados();
   }
 
@@ -219,8 +236,8 @@ export default function AdminPage() {
                       ? "bg-[#F5EFFF] text-[#8C6EE8]"
                       : o.status === "agendado"
                       ? "bg-[#E6F8F6] text-[#2A9D8F]"
-                      : o.status === "aprovado"
-                      ? "bg-[#E6F8F6] text-[#2A9D8F]"
+                      : o.status === "aguardando_pagamento"
+                      ? "bg-amber-50 text-amber-600"
                       : "bg-red-50 text-red-500"
                   }`}
                 >
@@ -228,19 +245,29 @@ export default function AdminPage() {
                 </span>
               </div>
 
-              <div className="text-sm text-[#233041]">{o.tamanho_imovel}</div>
+              <div className="text-sm text-[#233041]">
+                {o.nome_cliente} — {o.tamanho_imovel || "Carpet/Upholstery"}
+              </div>
+              {o.data_escolhida && (
+                <div className="text-sm text-[#233041]">
+                  📅 {o.data_escolhida} — {o.periodo_escolhido === "manha" ? "Manhã (8h-12h)" : "Tarde (13h-17h)"}
+                </div>
+              )}
               <div className="text-sm text-[#6B7480]">{o.mensagem}</div>
               <div className="text-xs text-[#6B7480]">
                 {new Date(o.created_at).toLocaleString("pt-BR")}
               </div>
 
-              {o.status === "pendente" && agendandoId !== o.id && (
+              {erro[o.id] && <p className="text-sm text-red-600">{erro[o.id]}</p>}
+
+              {o.status === "pendente" && (
                 <div className="flex gap-3 mt-2">
                   <button
-                    onClick={() => setAgendandoId(o.id)}
-                    className="flex-1 bg-[#71D7CF] text-white rounded-full py-2 text-sm font-semibold"
+                    onClick={() => confirmarOrcamento(o.id)}
+                    disabled={processando === o.id}
+                    className="flex-1 bg-[#71D7CF] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
                   >
-                    Aprovar e Agendar
+                    {processando === o.id ? "Enviando..." : "Confirmar Orçamento"}
                   </button>
                   <button
                     onClick={() => recusar(o.id)}
@@ -251,38 +278,15 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {agendandoId === o.id && (
-                <div className="flex flex-col gap-3 mt-2 bg-[#F5EFFF] rounded-xl p-4">
-                  <label className="text-xs font-semibold text-[#233041]">
-                    Data e horário
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={dataHora}
-                    onChange={(e) => setDataHora(e.target.value)}
-                    className="px-4 py-2 rounded-lg border border-[#E6EAF2]"
-                  />
-                  {erroAgenda && (
-                    <p className="text-sm text-red-600">{erroAgenda}</p>
-                  )}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => confirmarAgendamento(o.id)}
-                      disabled={salvando || !dataHora}
-                      className="flex-1 bg-[#8C6EE8] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
-                    >
-                      {salvando ? "Agendando..." : "Confirmar"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAgendandoId(null);
-                        setErroAgenda("");
-                      }}
-                      className="flex-1 border border-[#E6EAF2] text-[#6B7480] rounded-full py-2 text-sm font-semibold"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
+              {o.status === "aguardando_pagamento" && (
+                <div className="flex gap-3 mt-2">
+                  <button
+                    onClick={() => confirmarPagamento(o.id)}
+                    disabled={processando === o.id}
+                    className="flex-1 bg-[#8C6EE8] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {processando === o.id ? "Confirmando..." : "Pagamento Confirmado"}
+                  </button>
                 </div>
               )}
             </div>

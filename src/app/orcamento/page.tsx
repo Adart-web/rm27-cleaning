@@ -208,13 +208,32 @@ export default function OrcamentoPage() {
       frequencia: tipoServico === "regular" ? frequencia : null,
       status: "pendente",
       idioma: "en",
+      data_escolhida: dataEscolhida,
+      periodo_escolhido: periodoEscolhido,
+      telefone,
+      nome_cliente: nome,
       mensagem: `Serviço: ${tipoServico} | Estimativa: $${estimativa} | ${detalhes} | Cidade: ${cidade || "não informado"} | Indicação: ${indicacao || "não informado"} | Data desejada: ${horarioTexto} | Nome: ${nome} | Tel: ${telefone} | Email: ${email}`,
     });
+
     setLoading(false);
     if (error) {
       alert("Erro ao enviar. Tenta de novo.");
       return;
     }
+
+    fetch("/api/whatsapp/notify-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nome,
+        telefone,
+        tipo: tipoServico,
+        estimativa,
+        data: dataEscolhida,
+        periodo: periodoEscolhido,
+      }),
+    }).catch(() => {});
+
     setEnviado(true);
   }
 
