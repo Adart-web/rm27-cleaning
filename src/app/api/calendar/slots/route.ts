@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
   try {
     const availability = await getMonthAvailability(Number(year), Number(month));
     return NextResponse.json({ availability });
-  } catch (e) {
-    return NextResponse.json({ error: "Could not load availability" }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    console.error("CALENDAR ERROR:", message);
+    return NextResponse.json({ error: `Could not load availability: ${message}` }, { status: 500 });
   }
 }

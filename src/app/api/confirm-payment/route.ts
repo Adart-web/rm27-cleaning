@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAvailability, createCalendarEvent } from "@/lib/googleCalendar";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { orlandoToDate, formatHora12, formatDataEn, horaPadrao } from "@/lib/time";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,9 +21,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing schedule fields" }, { status: 400 });
     }
 
-    const horaInicio = orcamento.periodo_escolhido === "manha" ? 9 : 13;
-    const start = new Date(orcamento.data_escolhida + "T00:00:00");
-    start.setHours(horaInicio, 0, 0, 0);
+    const hora: string = orcamento.hora_inicio || horaPadrao(orcamento.periodo_escolhido);
+    const start = orlandoToDate(orcamento.data_escolhida, hora);
     const end = new Date(start.getTime() + 120 * 60000);
 
     const disponivel = await checkAvailability(start.toISOString(), end.toISOString());
@@ -58,17 +58,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Update orcamento failed" }, { status: 500 });
     }
 
-    const dataFmt = start.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    });
-    const periodoFmt = orcamento.periodo_escolhido === "manha" ? "Morning (8am-12pm)" : "Afternoon (1pm-5pm)";
-
     const texto = `Payment received! ✅
 
 Your appointment with RM27 Cleaning is confirmed for:
-${dataFmt} — ${periodoFmt}
+${formatDataEn(orcamento.data_escolhida)} at ${formatHora12(hora)}
 
 We'll send a reminder closer to the date. Thank you!`;
 

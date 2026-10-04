@@ -3,17 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { formatHora12, horaPadrao, opcoesHorario } from "@/lib/time";
 
 type Orcamento = {
   id: string;
   tipo: string;
-  tamanho_imovel: string;
+  tamanho_imovel: string | null;
   frequencia: string | null;
   status: string;
   mensagem: string;
   created_at: string;
   data_escolhida: string | null;
   periodo_escolhido: string | null;
+  hora_inicio: string | null;
   telefone: string | null;
   nome_cliente: string | null;
 };
@@ -30,11 +32,53 @@ function extrairValor(mensagem: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
+function parseMensagem(m: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  m.split(" | ").forEach((part) => {
+    const i = part.indexOf(": ");
+    if (i > -1) out[part.slice(0, i).trim()] = part.slice(i + 2).trim();
+  });
+  return out;
+}
+
+function formatDataBr(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
 const statusLabel: Record<string, string> = {
   pendente: "Pendente",
   aguardando_pagamento: "Aguardando Pagamento",
   agendado: "Agendado",
   recusado: "Recusado",
+};
+
+const servicoLabel: Record<string, string> = {
+  regular: "Regular",
+  deep: "Deep Cleaning",
+  move_in_out: "Move In / Out",
+  carpet_upholstery: "Carpete e Estofados",
+};
+
+const frequenciaLabel: Record<string, string> = {
+  semanal: "Semanal",
+  quinzenal: "Quinzenal",
+  mensal: "Mensal",
+};
+
+const periodoLabel: Record<string, string> = {
+  manha: "Manhã (8h–12h)",
+  tarde: "Tarde (13h–17h)",
+};
+
+const areaLabel: Record<string, string> = {
+  pequena: "pequena",
+  media: "média",
+  grande: "grande",
 };
 
 export default function AdminPage() {
@@ -45,6 +89,7 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [processando, setProcessando] = useState<string | null>(null);
   const [erro, setErro] = useState<Record<string, string>>({});
+  const [horarios, setHorarios] = useState<Record<string, string>>({});
 
   async function carregarDados() {
     setLoading(true);
@@ -84,21 +129,22 @@ export default function AdminPage() {
     carregarDados();
   }
 
-  async function confirmarOrcamento(id: string) {
-    setProcessando(id);
-    setErro((prev) => ({ ...prev, [id]: "" }));
+  async function confirmarOrcamento(o: Orcamento) {
+    const hora = horarios[o.id] ?? horaPadrao(o.periodo_escolhido);
+    setProcessando(o.id);
+    setErro((prev) => ({ ...prev, [o.id]: "" }));
 
     const res = await fetch("/api/confirm-quote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orcamentoId: id }),
+      body: JSON.stringify({ orcamentoId: o.id, horaInicio: hora }),
     });
 
     const result = await res.json();
     setProcessando(null);
 
     if (!res.ok) {
-      setErro((prev) => ({ ...prev, [id]: result.error || "Erro ao confirmar orçamento." }));
+      setErro((prev) => ({ ...prev, [o.id]: result.error || "Erro ao confirmar orçamento." }));
       return;
     }
 
@@ -221,76 +267,193 @@ export default function AdminPage() {
             <p className="text-[#6B7480]">Nenhuma solicitação ainda.</p>
           )}
 
-          {orcamentos.map((o) => (
-            <div
-              key={o.id}
-              className="bg-white border border-[#E6EAF2] rounded-2xl p-6 flex flex-col gap-3"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[#8C6EE8]">
-                  {o.tipo} {o.frequencia ? `— ${o.frequencia}` : ""}
-                </span>
-                <span
-                  className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                    o.status === "pendente"
-                      ? "bg-[#F5EFFF] text-[#8C6EE8]"
-                      : o.status === "agendado"
-                      ? "bg-[#E6F8F6] text-[#2A9D8F]"
-                      : o.status === "aguardando_pagamento"
-                      ? "bg-amber-50 text-amber-600"
-                      : "bg-red-50 text-red-500"
-                  }`}
-                >
-                  {statusLabel[o.status] || o.status}
-                </span>
-              </div>
+          {orcamentos.map((o) => {
+            const d = parseMensagem(o.mensagem || "");
+            const valor = extrairValor(o.mensagem || "");
+            const servico = servicoLabel[d["Serviço"]] || o.tipo;
+            const freq = o.frequencia ? frequenciaLabel[o.frequencia] || o.frequencia : "";
+            const telefone = o.telefone || d["Tel"] || "";
+            const cidade = d["Cidade"] && d["Cidade"] !== "não informado" ? d["Cidade"] : "";
+            const indicacao = d["Indicação"] && d["Indicação"] !== "não informado" ? d["Indicação"] : "";
+            const email = d["Email"] || "";
 
-              <div className="text-sm text-[#233041]">
-                {o.nome_cliente} — {o.tamanho_imovel || "Carpet/Upholstery"}
-              </div>
-              {o.data_escolhida && (
-                <div className="text-sm text-[#233041]">
-                  📅 {o.data_escolhida} — {o.periodo_escolhido === "manha" ? "Manhã (8h-12h)" : "Tarde (13h-17h)"}
+            const chips: string[] = [];
+            const pets = Number(d["Pets"] || 0);
+            if (pets > 0) chips.push(`${pets} pet${pets > 1 ? "s" : ""}`);
+            const kids = Number(d["Crianças"] || 0);
+            if (kids > 0) chips.push(`${kids} ${kids > 1 ? "crianças" : "criança"}`);
+            if (d["Forno"] === "true") chips.push("Forno");
+            if (d["Geladeira"] === "true") chips.push("Geladeira");
+            const area = d["Área externa"];
+            if (area && area !== "não") chips.push(`Área externa ${areaLabel[area] || area}`);
+            if (d["Itens"]) d["Itens"].split(", ").forEach((i) => chips.push(i));
+
+            const horaSelecionada = horarios[o.id] ?? horaPadrao(o.periodo_escolhido);
+
+            return (
+              <div
+                key={o.id}
+                className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-4"
+              >
+                {/* Topo: cliente + status + valor */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <div className="font-semibold text-base text-[#233041]">
+                      {o.nome_cliente || d["Nome"] || "Sem nome"}
+                    </div>
+                    <div className="text-xs text-[#6B7480]">
+                      {servico}
+                      {freq ? ` · ${freq}` : ""}
+                      {o.tamanho_imovel ? ` · ${o.tamanho_imovel}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span
+                      className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                        o.status === "pendente"
+                          ? "bg-[#F5EFFF] text-[#8C6EE8]"
+                          : o.status === "agendado"
+                          ? "bg-[#E6F8F6] text-[#2A9D8F]"
+                          : o.status === "aguardando_pagamento"
+                          ? "bg-amber-50 text-amber-600"
+                          : "bg-red-50 text-red-500"
+                      }`}
+                    >
+                      {statusLabel[o.status] || o.status}
+                    </span>
+                    <span className="font-[family-name:var(--font-fraunces)] text-2xl text-[#8C6EE8]">
+                      ${valor}
+                    </span>
+                  </div>
                 </div>
-              )}
-              <div className="text-sm text-[#6B7480]">{o.mensagem}</div>
-              <div className="text-xs text-[#6B7480]">
-                {new Date(o.created_at).toLocaleString("pt-BR")}
+
+                {/* Data e período */}
+                {o.data_escolhida && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-[#233041] bg-[#F5EFFF] rounded-xl px-4 py-2">
+                    <span>📅</span>
+                    <span className="font-medium">{formatDataBr(o.data_escolhida)}</span>
+                    <span className="text-[#6B7480]">
+                      · {periodoLabel[o.periodo_escolhido ?? ""] || o.periodo_escolhido}
+                    </span>
+                    {o.hora_inicio && (
+                      <span className="font-semibold text-[#8C6EE8]">
+                        · início {formatHora12(o.hora_inicio)}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Detalhes do serviço */}
+                {chips.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {chips.map((c) => (
+                      <span
+                        key={c}
+                        className="text-xs bg-[#FBFCFF] border border-[#E6EAF2] text-[#233041] rounded-full px-3 py-1"
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Contato */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-[#233041]">
+                  {telefone && (
+                    <div>
+                      <span className="text-[#6B7480]">Tel: </span>
+                      {telefone}
+                    </div>
+                  )}
+                  {cidade && (
+                    <div>
+                      <span className="text-[#6B7480]">Cidade: </span>
+                      {cidade}
+                    </div>
+                  )}
+                  {indicacao && (
+                    <div>
+                      <span className="text-[#6B7480]">Indicação: </span>
+                      {indicacao}
+                    </div>
+                  )}
+                  {email && (
+                    <div>
+                      <span className="text-[#6B7480]">E-mail: </span>
+                      {email}
+                    </div>
+                  )}
+                </div>
+
+                <details className="text-xs text-[#6B7480]">
+                  <summary className="cursor-pointer">Ver texto completo</summary>
+                  <p className="mt-2 leading-relaxed">{o.mensagem}</p>
+                </details>
+
+                <div className="text-xs text-[#6B7480]">
+                  Recebido em {new Date(o.created_at).toLocaleString("pt-BR")}
+                </div>
+
+                {erro[o.id] && <p className="text-sm text-red-600">{erro[o.id]}</p>}
+
+                {/* Ações: pendente */}
+                {o.status === "pendente" && (
+                  <div className="flex flex-col gap-3">
+                    {o.periodo_escolhido && (
+                      <div className="flex items-center gap-3 text-sm text-[#233041]">
+                        <label htmlFor={`hora-${o.id}`} className="font-medium">
+                          Horário de início
+                        </label>
+                        <select
+                          id={`hora-${o.id}`}
+                          value={horaSelecionada}
+                          onChange={(e) =>
+                            setHorarios((prev) => ({ ...prev, [o.id]: e.target.value }))
+                          }
+                          className="px-3 py-2 rounded-lg border border-[#E6EAF2] text-[#233041] bg-white"
+                        >
+                          {opcoesHorario(o.periodo_escolhido).map((h) => (
+                            <option key={h} value={h}>
+                              {formatHora12(h)}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-[#6B7480]">duração: 2h</span>
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => confirmarOrcamento(o)}
+                        disabled={processando === o.id}
+                        className="flex-1 bg-[#71D7CF] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
+                      >
+                        {processando === o.id ? "Enviando..." : "Confirmar Orçamento"}
+                      </button>
+                      <button
+                        onClick={() => recusar(o.id)}
+                        className="flex-1 border border-red-300 text-red-500 rounded-full py-2 text-sm font-semibold"
+                      >
+                        Recusar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ações: aguardando pagamento */}
+                {o.status === "aguardando_pagamento" && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => confirmarPagamento(o.id)}
+                      disabled={processando === o.id}
+                      className="flex-1 bg-[#8C6EE8] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
+                    >
+                      {processando === o.id ? "Confirmando..." : "Pagamento Confirmado"}
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {erro[o.id] && <p className="text-sm text-red-600">{erro[o.id]}</p>}
-
-              {o.status === "pendente" && (
-                <div className="flex gap-3 mt-2">
-                  <button
-                    onClick={() => confirmarOrcamento(o.id)}
-                    disabled={processando === o.id}
-                    className="flex-1 bg-[#71D7CF] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
-                  >
-                    {processando === o.id ? "Enviando..." : "Confirmar Orçamento"}
-                  </button>
-                  <button
-                    onClick={() => recusar(o.id)}
-                    className="flex-1 border border-red-300 text-red-500 rounded-full py-2 text-sm font-semibold"
-                  >
-                    Recusar
-                  </button>
-                </div>
-              )}
-
-              {o.status === "aguardando_pagamento" && (
-                <div className="flex gap-3 mt-2">
-                  <button
-                    onClick={() => confirmarPagamento(o.id)}
-                    disabled={processando === o.id}
-                    className="flex-1 bg-[#8C6EE8] text-white rounded-full py-2 text-sm font-semibold disabled:opacity-50"
-                  >
-                    {processando === o.id ? "Confirmando..." : "Pagamento Confirmado"}
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
