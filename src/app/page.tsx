@@ -1,4 +1,95 @@
 import Image from "next/image";
+import Link from "next/link";
+
+const SERVICOS = [
+  {
+    title: "Standard Cleaning",
+    desc: "Dusting, floors, kitchen and bathrooms — the essentials, done right.",
+    image: "/images/service-standard.jpg",
+    position: "object-center",
+  },
+  {
+    title: "Deep Cleaning",
+    desc: "Baseboards, inside appliances, grout — a thorough reset for your home.",
+    image: "/images/service-deep.jpg",
+    position: "object-center",
+  },
+  {
+    title: "Move In / Move Out",
+    desc: "A spotless handoff for the home you're leaving or stepping into.",
+    image: "/images/service-moveinout.jpg",
+    position: "object-center",
+  },
+  {
+    title: "Carpet & Upholstery",
+    desc: "Carpets, rugs, sofas, chairs and mattresses — deep cleaned and refreshed.",
+    image: "/images/about.jpg",
+    position: "object-bottom",
+  },
+  {
+    title: "Recurring Plans",
+    desc: "Weekly, biweekly or monthly — set it once, we take it from there.",
+    image: "/images/service-recurring.jpg",
+    position: "object-center",
+  },
+];
+
+const iconProps = {
+  width: 28,
+  height: 28,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+const PASSOS = [
+  {
+    n: "01",
+    title: "Request your quote",
+    desc: "Tell us about your home and the service you need.",
+    color: "#8C6EE8",
+    bg: "#F5EFFF",
+    icon: (
+      <svg {...iconProps}>
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+        <rect x="9" y="3" width="6" height="4" rx="1" />
+        <path d="m9 14 2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
+    n: "02",
+    title: "Confirm your appointment",
+    desc: "We check the schedule and send a WhatsApp confirmation.",
+    color: "#F39BC5",
+    bg: "#FDECF4",
+    icon: (
+      <svg {...iconProps}>
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M3 10h18" />
+        <path d="m9 16 2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
+    n: "03",
+    title: "We show up and clean",
+    desc: "You get a reminder before we arrive.",
+    color: "#2FB8AE",
+    bg: "#E6F8F6",
+    icon: (
+      <svg {...iconProps}>
+        <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
+        <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
+      </svg>
+    ),
+  },
+];
 
 export default function Home() {
   return (
@@ -16,7 +107,7 @@ export default function Home() {
           <a href="#services" className="text-sm font-medium">Services</a>
           <a href="#how" className="text-sm font-medium">How it works</a>
           <a href="#reviews" className="text-sm font-medium">Reviews</a>
-          <a href="#quote" className="bg-[#8C6EE8] text-[#FBFCFF] rounded-full px-6 py-3 text-sm font-semibold hover:bg-[#7857D6] transition-colors">Get a free quote</a>
+          <Link href="/orcamento" className="bg-[#8C6EE8] text-[#FBFCFF] rounded-full px-6 py-3 text-sm font-semibold hover:bg-[#7857D6] transition-colors">Get a free quote</Link>
         </nav>
       </header>
 
@@ -36,7 +127,7 @@ export default function Home() {
           <h1 className="font-[family-name:var(--font-fraunces)] font-medium text-4xl md:text-6xl leading-tight text-white">A cleaner home, a lighter life.</h1>
           <p className="text-lg leading-relaxed text-white/90 max-w-md">RM27 Cleaning takes the weekly to-do off your plate — one-time deep cleans or a regular visit you never have to think about.</p>
           <div className="flex gap-4 items-center flex-wrap">
-            <a href="#quote" className="bg-[#F39BC5] text-white rounded-full px-8 py-4 text-base font-semibold hover:bg-[#EA82B4] transition-colors">Get your free quote</a>
+            <Link href="/orcamento" className="bg-[#F39BC5] text-white rounded-full px-8 py-4 text-base font-semibold hover:bg-[#EA82B4] transition-colors">Get your free quote</Link>
             <a href="#how" className="border border-white/70 text-white rounded-full px-7 py-4 text-base font-semibold">See how it works</a>
           </div>
         </div>
@@ -66,21 +157,22 @@ export default function Home() {
           <h2 className="font-[family-name:var(--font-fraunces)] font-medium text-3xl md:text-4xl text-[#233041] mt-3 mb-3">Services built around your home</h2>
           <p className="text-base text-[#6B7480]">Pick a one-time clean or set up a plan that keeps your home consistently spotless.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[
-            { title: "Standard Cleaning", desc: "Dusting, floors, kitchen and bathrooms — the essentials, done right.", image: "/images/service-standard.jpg" },
-{ title: "Deep Cleaning", desc: "Baseboards, inside appliances, grout — a thorough reset for your home.", image: "/images/service-deep.jpg" },
-{ title: "Move In / Move Out", desc: "A spotless handoff for the home you're leaving or stepping into.", image: "/images/service-moveinout.jpg" },
-{ title: "Recurring Plans", desc: "Weekly, biweekly or monthly — set it once, we take it from there.", image: "/images/service-recurring.jpg" },
-          ].map((s) => (
-            <div key={s.title} className="bg-white border border-[#E6EAF2] rounded-2xl overflow-hidden flex flex-col">
-              {s.image ? (
-                <div className="relative h-32">
-                  <Image src={s.image} alt={s.title} fill className="object-cover" />
-                </div>
-              ) : (
-                <div className="h-32 bg-gradient-to-br from-[#E6F8F6] to-[#71D7CF]" />
-              )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          {SERVICOS.map((s, i) => (
+            <div
+              key={s.title}
+              className={`bg-white border border-[#E6EAF2] rounded-2xl overflow-hidden flex flex-col ${
+                i === SERVICOS.length - 1 ? "sm:col-span-2 lg:col-span-1" : ""
+              }`}
+            >
+              <div className="relative h-32">
+                <Image
+                  src={s.image}
+                  alt={s.title}
+                  fill
+                  className={`object-cover ${s.position}`}
+                />
+              </div>
               <div className="p-6 flex flex-col gap-2">
                 <div className="font-semibold text-lg text-[#233041]">{s.title}</div>
                 <div className="text-sm text-[#6B7480] leading-relaxed">{s.desc}</div>
@@ -92,15 +184,27 @@ export default function Home() {
 
       {/* How it works */}
       <section id="how" className="bg-[#F5EFFF] px-8 md:px-24 py-24 flex flex-col gap-14">
-        <h2 className="font-[family-name:var(--font-fraunces)] font-medium text-3xl md:text-4xl text-[#233041] text-center">How it works</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-          {[
-            { n: "01", title: "Request your quote", desc: "Tell us about your home and the service you need.", color: "#8C6EE8" },
-            { n: "02", title: "Confirm your appointment", desc: "We check the schedule and send a WhatsApp confirmation.", color: "#F39BC5" },
-            { n: "03", title: "We show up and clean", desc: "You get a reminder before we arrive.", color: "#71D7CF" },
-          ].map((step) => (
-            <div key={step.n} className="flex flex-col gap-3">
-              <div className="font-[family-name:var(--font-fraunces)] text-4xl font-medium" style={{ color: step.color }}>{step.n}</div>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <h2 className="font-[family-name:var(--font-fraunces)] font-medium text-3xl md:text-4xl text-[#233041]">How it works</h2>
+          <p className="text-base text-[#6B7480] max-w-md">Three simple steps from your first quote to a spotless home.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {PASSOS.map((step) => (
+            <div key={step.n} className="bg-white border border-[#E6EAF2] rounded-2xl p-7 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{ backgroundColor: step.bg, color: step.color }}
+                >
+                  {step.icon}
+                </div>
+                <span
+                  className="font-[family-name:var(--font-fraunces)] text-4xl font-medium"
+                  style={{ color: step.color, opacity: 0.35 }}
+                >
+                  {step.n}
+                </span>
+              </div>
               <div className="font-semibold text-lg text-[#233041]">{step.title}</div>
               <div className="text-sm text-[#6B7480] leading-relaxed">{step.desc}</div>
             </div>
@@ -130,7 +234,7 @@ export default function Home() {
       {/* CTA */}
       <section id="quote" className="px-8 md:px-24 py-24 bg-gradient-to-br from-[#8C6EE8] to-[#F39BC5] flex flex-col items-center gap-6 text-center">
         <h2 className="font-[family-name:var(--font-fraunces)] font-medium text-3xl md:text-4xl text-white max-w-xl">Ready for a home that takes care of itself?</h2>
-        <a href="#" className="bg-white text-[#8C6EE8] rounded-full px-9 py-4 text-base font-semibold">Get your free quote</a>
+        <Link href="/orcamento" className="bg-white text-[#8C6EE8] rounded-full px-9 py-4 text-base font-semibold">Get your free quote</Link>
       </section>
 
       {/* Footer */}
