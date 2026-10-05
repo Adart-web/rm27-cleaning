@@ -27,6 +27,8 @@ type Agendamento = {
   status: string;
 };
 
+type Filtro = "acao" | "agendado" | "recusado" | "todos";
+
 function extrairValor(mensagem: string): number {
   const match = mensagem.match(/Estimativa:\s*\$([\d.]+)/);
   return match ? parseFloat(match[1]) : 0;
@@ -50,6 +52,15 @@ function formatDataBr(dateStr: string): string {
   });
 }
 
+function formatRecebido(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const statusLabel: Record<string, string> = {
   pendente: "Pendente",
   aguardando_pagamento: "Aguardando Pagamento",
@@ -64,6 +75,13 @@ const servicoLabel: Record<string, string> = {
   carpet_upholstery: "Carpete e Estofados",
 };
 
+const servicoCor: Record<string, string> = {
+  regular: "bg-[#F5EFFF] text-[#8C6EE8]",
+  deep: "bg-[#E8F1FE] text-[#3B82D6]",
+  move_in_out: "bg-[#E6F8F6] text-[#2A9D8F]",
+  carpet_upholstery: "bg-[#FDECF4] text-[#D9609A]",
+};
+
 const frequenciaLabel: Record<string, string> = {
   semanal: "Semanal",
   quinzenal: "Quinzenal",
@@ -75,11 +93,65 @@ const periodoLabel: Record<string, string> = {
   tarde: "Tarde (13h–17h)",
 };
 
+const periodoCurto: Record<string, string> = {
+  manha: "Manhã",
+  tarde: "Tarde",
+};
+
 const areaLabel: Record<string, string> = {
   pequena: "pequena",
   media: "média",
   grande: "grande",
 };
+
+function statusClasses(status: string): string {
+  if (status === "pendente") return "bg-[#F5EFFF] text-[#8C6EE8]";
+  if (status === "agendado") return "bg-[#E6F8F6] text-[#2A9D8F]";
+  if (status === "aguardando_pagamento") return "bg-amber-50 text-amber-600";
+  return "bg-red-50 text-red-500";
+}
+
+function resumoData(o: Orcamento): string {
+  if (!o.data_escolhida) return "Sem data";
+  const hora = o.hora_inicio
+    ? formatHora12(o.hora_inicio)
+    : periodoCurto[o.periodo_escolhido ?? ""] || "";
+  return `${formatDataBr(o.data_escolhida)}${hora ? ` · ${hora}` : ""}`;
+}
+
+function montarDados(o: Orcamento) {
+  const d = parseMensagem(o.mensagem || "");
+  const valor = extrairValor(o.mensagem || "");
+  const servicoKey = d["Serviço"] || "";
+  const servico = servicoLabel[servicoKey] || o.tipo;
+  const freq = o.frequencia ? frequenciaLabel[o.frequencia] || o.frequencia : "";
+
+  const adicionais: string[] = [];
+  const pets = Number(d["Pets"] || 0);
+  if (pets > 0) adicionais.push(`${pets} pet${pets > 1 ? "s" : ""}`);
+  const kids = Number(d["Crianças"] || 0);
+  if (kids > 0) adicionais.push(`${kids} ${kids > 1 ? "crianças" : "criança"}`);
+  if (d["Forno"] === "true") adicionais.push("Forno");
+  if (d["Geladeira"] === "true") adicionais.push("Geladeira");
+  const area = d["Área externa"];
+  if (area && area !== "não") adicionais.push(`Área externa ${areaLabel[area] || area}`);
+  if (d["Itens"]) d["Itens"].split(", ").forEach((i) => adicionais.push(i));
+
+  return {
+    nome: o.nome_cliente || d["Nome"] || "Sem nome",
+    valor,
+    servicoKey,
+    servico,
+    freq,
+    tamanho: o.tamanho_imovel || "",
+    adicionais,
+    telefone: o.telefone || d["Tel"] || "",
+    cidade: d["Cidade"] && d["Cidade"] !== "não informado" ? d["Cidade"] : "",
+    indicacao: d["Indicação"] && d["Indicação"] !== "não informado" ? d["Indicação"] : "",
+    email: d["Email"] || "",
+    parseOk: Boolean(d["Serviço"]),
+  };
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -90,6 +162,8 @@ export default function AdminPage() {
   const [processando, setProcessando] = useState<string | null>(null);
   const [erro, setErro] = useState<Record<string, string>>({});
   const [horarios, setHorarios] = useState<Record<string, string>>({});
+  const [filtro, setFiltro] = useState<Filtro>("acao");
+  const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
 
   async function carregarDados() {
     setLoading(true);
@@ -123,6 +197,10 @@ export default function AdminPage() {
     checkAuthAndLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function toggle(id: string) {
+    setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
 
   async function recusar(id: string) {
     await supabase.from("orcamentos").update({ status: "recusado" }).eq("id", id);
@@ -209,6 +287,26 @@ export default function AdminPage() {
   const taxaConversao =
     totalOrcamentos > 0 ? Math.round((totalAgendados / totalOrcamentos) * 100) : 0;
 
+  // Filtros
+  const qtdAcao = orcamentos.filter(
+    (o) => o.status === "pendente" || o.status === "aguardando_pagamento"
+  ).length;
+  const qtdRecusados = orcamentos.filter((o) => o.status === "recusado").length;
+
+  const abas: { key: Filtro; label: string; count: number }[] = [
+    { key: "acao", label: "Precisam de ação", count: qtdAcao },
+    { key: "agendado", label: "Agendados", count: totalAgendados },
+    { key: "recusado", label: "Recusados", count: qtdRecusados },
+    { key: "todos", label: "Todos", count: totalOrcamentos },
+  ];
+
+  const visiveis = orcamentos.filter((o) => {
+    if (filtro === "acao") return o.status === "pendente" || o.status === "aguardando_pagamento";
+    if (filtro === "agendado") return o.status === "agendado";
+    if (filtro === "recusado") return o.status === "recusado";
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-[#FBFCFF] px-8 py-10">
       <div className="max-w-4xl mx-auto flex flex-col gap-8">
@@ -261,75 +359,102 @@ export default function AdminPage() {
             Solicitações de Orçamento
           </h2>
 
+          <div className="flex flex-wrap gap-2">
+            {abas.map((a) => (
+              <button
+                key={a.key}
+                onClick={() => setFiltro(a.key)}
+                className={`text-sm px-4 py-2 rounded-full border ${
+                  filtro === a.key
+                    ? "bg-[#8C6EE8] text-white border-[#8C6EE8]"
+                    : "bg-white text-[#233041] border-[#E6EAF2]"
+                }`}
+              >
+                {a.label} ({a.count})
+              </button>
+            ))}
+          </div>
+
           {loading && <p className="text-[#6B7480]">Carregando...</p>}
 
-          {!loading && orcamentos.length === 0 && (
-            <p className="text-[#6B7480]">Nenhuma solicitação ainda.</p>
+          {!loading && visiveis.length === 0 && (
+            <p className="text-[#6B7480]">Nada por aqui.</p>
           )}
 
-          {orcamentos.map((o) => {
-            const d = parseMensagem(o.mensagem || "");
-            const valor = extrairValor(o.mensagem || "");
-            const servico = servicoLabel[d["Serviço"]] || o.tipo;
-            const freq = o.frequencia ? frequenciaLabel[o.frequencia] || o.frequencia : "";
-            const telefone = o.telefone || d["Tel"] || "";
-            const cidade = d["Cidade"] && d["Cidade"] !== "não informado" ? d["Cidade"] : "";
-            const indicacao = d["Indicação"] && d["Indicação"] !== "não informado" ? d["Indicação"] : "";
-            const email = d["Email"] || "";
+          {visiveis.map((o) => {
+            const dados = montarDados(o);
+            const finalizado = o.status === "agendado" || o.status === "recusado";
+            const recolhido = finalizado && !expandidos[o.id];
 
-            const chips: string[] = [];
-            const pets = Number(d["Pets"] || 0);
-            if (pets > 0) chips.push(`${pets} pet${pets > 1 ? "s" : ""}`);
-            const kids = Number(d["Crianças"] || 0);
-            if (kids > 0) chips.push(`${kids} ${kids > 1 ? "crianças" : "criança"}`);
-            if (d["Forno"] === "true") chips.push("Forno");
-            if (d["Geladeira"] === "true") chips.push("Geladeira");
-            const area = d["Área externa"];
-            if (area && area !== "não") chips.push(`Área externa ${areaLabel[area] || area}`);
-            if (d["Itens"]) d["Itens"].split(", ").forEach((i) => chips.push(i));
+            if (recolhido) {
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => toggle(o.id)}
+                  className="w-full bg-white border border-[#E6EAF2] rounded-2xl px-5 py-3 flex items-center justify-between gap-4 text-left"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-sm text-[#233041]">{dados.nome}</span>
+                    <span className="text-xs text-[#6B7480]">
+                      {dados.servico} · {resumoData(o)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-[family-name:var(--font-fraunces)] text-lg text-[#8C6EE8]">
+                      ${dados.valor}
+                    </span>
+                    <span
+                      className={`text-xs font-semibold px-3 py-1 rounded-full ${statusClasses(o.status)}`}
+                    >
+                      {statusLabel[o.status] || o.status}
+                    </span>
+                  </div>
+                </button>
+              );
+            }
 
             const horaSelecionada = horarios[o.id] ?? horaPadrao(o.periodo_escolhido);
+            const corServico = servicoCor[dados.servicoKey] || "bg-gray-100 text-gray-600";
 
             return (
               <div
                 key={o.id}
-                className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-4"
+                className="bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-3"
               >
-                {/* Topo: cliente + status + valor */}
+                {/* Topo: cliente, serviço em destaque, status e valor */}
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <div className="font-semibold text-base text-[#233041]">
-                      {o.nome_cliente || d["Nome"] || "Sem nome"}
-                    </div>
-                    <div className="text-xs text-[#6B7480]">
-                      {servico}
-                      {freq ? ` · ${freq}` : ""}
-                      {o.tamanho_imovel ? ` · ${o.tamanho_imovel}` : ""}
+                  <div className="flex flex-col gap-2">
+                    <span className="font-semibold text-base text-[#233041]">{dados.nome}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`text-xs font-semibold px-3 py-1 rounded-full ${corServico}`}
+                      >
+                        {dados.servico}
+                        {dados.freq ? ` · ${dados.freq}` : ""}
+                      </span>
+                      {dados.tamanho && (
+                        <span className="text-xs text-[#6B7480]">{dados.tamanho}</span>
+                      )}
+                      <span className="text-xs text-[#6B7480]">
+                        · recebido {formatRecebido(o.created_at)}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-col items-end gap-1">
                     <span
-                      className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                        o.status === "pendente"
-                          ? "bg-[#F5EFFF] text-[#8C6EE8]"
-                          : o.status === "agendado"
-                          ? "bg-[#E6F8F6] text-[#2A9D8F]"
-                          : o.status === "aguardando_pagamento"
-                          ? "bg-amber-50 text-amber-600"
-                          : "bg-red-50 text-red-500"
-                      }`}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full ${statusClasses(o.status)}`}
                     >
                       {statusLabel[o.status] || o.status}
                     </span>
                     <span className="font-[family-name:var(--font-fraunces)] text-2xl text-[#8C6EE8]">
-                      ${valor}
+                      ${dados.valor}
                     </span>
                   </div>
                 </div>
 
-                {/* Data e período */}
+                {/* Data e hora em destaque */}
                 {o.data_escolhida && (
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-[#233041] bg-[#F5EFFF] rounded-xl px-4 py-2">
+                  <div className="flex flex-wrap items-center gap-x-2 text-sm text-[#233041] bg-[#F5EFFF] rounded-xl px-4 py-2">
                     <span>📅</span>
                     <span className="font-medium">{formatDataBr(o.data_escolhida)}</span>
                     <span className="text-[#6B7480]">
@@ -343,60 +468,60 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Detalhes do serviço */}
-                {chips.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {chips.map((c) => (
-                      <span
-                        key={c}
-                        className="text-xs bg-[#FBFCFF] border border-[#E6EAF2] text-[#233041] rounded-full px-3 py-1"
-                      >
-                        {c}
-                      </span>
-                    ))}
+                {/* Contato */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-[#233041]">
+                  {dados.telefone && (
+                    <div>
+                      <span className="text-[#6B7480]">Tel: </span>
+                      {dados.telefone}
+                    </div>
+                  )}
+                  {dados.cidade && (
+                    <div>
+                      <span className="text-[#6B7480]">Cidade: </span>
+                      {dados.cidade}
+                    </div>
+                  )}
+                  {dados.indicacao && (
+                    <div>
+                      <span className="text-[#6B7480]">Indicação: </span>
+                      {dados.indicacao}
+                    </div>
+                  )}
+                  {dados.email && (
+                    <div>
+                      <span className="text-[#6B7480]">E-mail: </span>
+                      {dados.email}
+                    </div>
+                  )}
+                </div>
+
+                {/* Adicionais em boxes (só aparece se houver) */}
+                {dados.adicionais.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7480]">
+                      Adicionais
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {dados.adicionais.map((a) => (
+                        <span
+                          key={a}
+                          className="text-sm bg-[#FBFCFF] border border-[#E6EAF2] text-[#233041] rounded-lg px-3 py-1.5"
+                        >
+                          {a}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Contato */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-[#233041]">
-                  {telefone && (
-                    <div>
-                      <span className="text-[#6B7480]">Tel: </span>
-                      {telefone}
-                    </div>
-                  )}
-                  {cidade && (
-                    <div>
-                      <span className="text-[#6B7480]">Cidade: </span>
-                      {cidade}
-                    </div>
-                  )}
-                  {indicacao && (
-                    <div>
-                      <span className="text-[#6B7480]">Indicação: </span>
-                      {indicacao}
-                    </div>
-                  )}
-                  {email && (
-                    <div>
-                      <span className="text-[#6B7480]">E-mail: </span>
-                      {email}
-                    </div>
-                  )}
-                </div>
-
-                <details className="text-xs text-[#6B7480]">
-                  <summary className="cursor-pointer">Ver texto completo</summary>
-                  <p className="mt-2 leading-relaxed">{o.mensagem}</p>
-                </details>
-
-                <div className="text-xs text-[#6B7480]">
-                  Recebido em {new Date(o.created_at).toLocaleString("pt-BR")}
-                </div>
+                {/* Pedidos antigos que o painel não consegue ler */}
+                {!dados.parseOk && (
+                  <p className="text-xs text-[#6B7480] leading-relaxed">{o.mensagem}</p>
+                )}
 
                 {erro[o.id] && <p className="text-sm text-red-600">{erro[o.id]}</p>}
 
-                {/* Ações: pendente */}
                 {o.status === "pendente" && (
                   <div className="flex flex-col gap-3">
                     {o.periodo_escolhido && (
@@ -439,7 +564,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Ações: aguardando pagamento */}
                 {o.status === "aguardando_pagamento" && (
                   <div className="flex gap-3">
                     <button
@@ -450,6 +574,15 @@ export default function AdminPage() {
                       {processando === o.id ? "Confirmando..." : "Pagamento Confirmado"}
                     </button>
                   </div>
+                )}
+
+                {finalizado && (
+                  <button
+                    onClick={() => toggle(o.id)}
+                    className="text-xs text-[#6B7480] underline self-start"
+                  >
+                    Recolher
+                  </button>
                 )}
               </div>
             );
