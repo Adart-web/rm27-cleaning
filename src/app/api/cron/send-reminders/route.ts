@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { orlandoToDate } from "@/lib/time";
+
+const TZ = "America/New_York";
 
 type OrcamentoResumo = {
   nome_cliente: string | null;
   telefone: string | null;
-  periodo_escolhido: string | null;
 };
+
+// Data de amanhã (YYYY-MM-DD) no fuso de Orlando
+function amanhaEmOrlando(): string {
+  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  const [y, m, d] = hoje.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -13,18 +22,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const amanha = new Date();
-  amanha.setDate(amanha.getDate() + 1);
-  const inicioAmanha = new Date(amanha.setHours(0, 0, 0, 0));
-  const fimAmanha = new Date(amanha.setHours(23, 59, 59, 999));
+  const dia = amanhaEmOrlando();
+  const inicioDia = orlandoToDate(dia, "00:00");
+  const fimDia = orlandoToDate(dia, "23:59");
 
   const { data: agendamentos, error } = await supabaseAdmin
     .from("agendamentos")
-    .select("*, orcamentos(nome_cliente, telefone, periodo_escolhido)")
+    .select("*, orcamentos(nome_cliente, telefone)")
     .eq("status", "confirmado")
     .eq("lembrete_enviado", false)
-    .gte("data_hora", inicioAmanha.toISOString())
-    .lte("data_hora", fimAmanha.toISOString());
+    .gte("data_hora", inicioDia.toISOString())
+    .lte("data_hora", fimDia.toISOString());
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -36,16 +44,22 @@ export async function GET(request: NextRequest) {
     const orc = ag.orcamentos as unknown as OrcamentoResumo;
     if (!orc?.telefone) continue;
 
-    const periodoFmt = orc.periodo_escolhido === "manha" ? "Morning (8am-12pm)" : "Afternoon (1pm-5pm)";
-    const dataFmt = new Date(ag.data_hora).toLocaleDateString("en-US", {
+    const inicioServico = new Date(ag.data_hora);
+    const dataFmt = inicioServico.toLocaleDateString("en-US", {
+      timeZone: TZ,
       weekday: "long",
       month: "long",
       day: "numeric",
     });
+    const horaFmt = inicioServico.toLocaleTimeString("en-US", {
+      timeZone: TZ,
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
     const texto = `Reminder: your RM27 Cleaning appointment is tomorrow!
 
-${dataFmt} — ${periodoFmt}
+${dataFmt} at ${horaFmt}
 
 See you soon! 🧹`;
 
