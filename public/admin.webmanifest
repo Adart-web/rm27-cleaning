@@ -1,0 +1,16 @@
+{
+  "name": "RM27 Painel",
+  "short_name": "RM27",
+  "description": "Agenda e clientes da RM27 Cleaning",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBFCFF",
+  "theme_color": "#FBFCFF",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
