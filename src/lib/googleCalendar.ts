@@ -1,7 +1,27 @@
 import { google } from "googleapis";
+import type { calendar_v3 } from "googleapis";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { orlandoToDate } from "./time";
 
-async function getAuthorizedClient() {
+const SCOPES = ["https://www.googleapis.com/auth/calendar"];
+const TZ = "America/New_York";
+
+function usaContaDeServico(): boolean {
+  return Boolean(
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY
+  );
+}
+
+function getCalendarId(): string {
+  if (!usaContaDeServico()) return "primary";
+  const id = process.env.GOOGLE_CALENDAR_ID;
+  if (!id) {
+    throw new Error("GOOGLE_CALENDAR_ID is required when using the service account");
+  }
+  return id;
+}
+
+async function getOAuthClient() {
   const { data } = await supabaseAdmin
     .from("configuracoes")
     .select("valor")
@@ -36,20 +56,47 @@ async function getAuthorizedClient() {
   return oauth2Client;
 }
 
+async function getCalendar() {
+  if (usaContaDeServico()) {
+    console.log("[calendar] auth=service-account");
+    const auth = new google.auth.JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: (process.env.GOOGLE_PRIVATE_KEY as string).replace(/\\n/g, "\n"),
+      scopes: SCOPES,
+    });
+    return google.calendar({ version: "v3", auth });
+  }
+  console.log("[calendar] auth=oauth");
+  const auth = await getOAuthClient();
+  return google.calendar({ version: "v3", auth });
+}
+
+function getBusy(data: calendar_v3.Schema$FreeBusyResponse, id: string) {
+  const cal = data.calendars?.[id];
+  if (!cal) {
+    throw new Error("Calendar not found in freebusy response");
+  }
+  if (cal.errors && cal.errors.length > 0) {
+    throw new Error(
+      `Calendar error: ${cal.errors.map((e) => e.reason).join(", ")}`
+    );
+  }
+  return cal.busy || [];
+}
+
 export async function checkAvailability(startISO: string, endISO: string) {
-  const auth = await getAuthorizedClient();
-  const calendar = google.calendar({ version: "v3", auth });
+  const calendar = await getCalendar();
+  const id = getCalendarId();
 
   const res = await calendar.freebusy.query({
     requestBody: {
       timeMin: startISO,
       timeMax: endISO,
-      items: [{ id: "primary" }],
+      items: [{ id }],
     },
   });
 
-  const busy = res.data.calendars?.primary?.busy || [];
-  return busy.length === 0;
+  return getBusy(res.data, id).length === 0;
 }
 
 export async function createCalendarEvent(params: {
@@ -58,85 +105,57 @@ export async function createCalendarEvent(params: {
   startISO: string;
   endISO: string;
 }) {
-  const auth = await getAuthorizedClient();
-  const calendar = google.calendar({ version: "v3", auth });
+  const calendar = await getCalendar();
 
   const res = await calendar.events.insert({
-    calendarId: "primary",
+    calendarId: getCalendarId(),
     requestBody: {
       summary: params.summary,
       description: params.description,
-      start: { dateTime: params.startISO },
-      end: { dateTime: params.endISO },
+      start: { dateTime: params.startISO, timeZone: TZ },
+      end: { dateTime: params.endISO, timeZone: TZ },
     },
   });
 
   return res.data.id;
 }
 
-export async function getAvailableSlots(dateStr: string): Promise<string[]> {
-  const day = new Date(dateStr + "T00:00:00");
-
-  if (day.getDay() === 0) return [];
-
-  const businessHours = [9, 11, 13, 15];
-  const auth = await getAuthorizedClient();
-  const calendar = google.calendar({ version: "v3", auth });
-
-  const dayStart = new Date(dateStr + "T00:00:00");
-  const dayEnd = new Date(dateStr + "T23:59:59");
-
-  const res = await calendar.freebusy.query({
-    requestBody: {
-      timeMin: dayStart.toISOString(),
-      timeMax: dayEnd.toISOString(),
-      items: [{ id: "primary" }],
-    },
-  });
-
-  const busy = res.data.calendars?.primary?.busy || [];
-
-  const slotsLivres: string[] = [];
-
-  for (const hora of businessHours) {
-    const slotStart = new Date(dateStr + "T00:00:00");
-    slotStart.setHours(hora, 0, 0, 0);
-    const slotEnd = new Date(slotStart.getTime() + 2 * 60 * 60000);
-
-    const conflita = busy.some((b) => {
-      const busyStart = new Date(b.start!);
-      const busyEnd = new Date(b.end!);
-      return slotStart < busyEnd && slotEnd > busyStart;
+export async function deleteCalendarEvent(eventId: string) {
+  const calendar = await getCalendar();
+  try {
+    await calendar.events.delete({
+      calendarId: getCalendarId(),
+      eventId,
     });
-
-    if (!conflita && slotStart > new Date()) {
-      slotsLivres.push(slotStart.toISOString());
-    }
+  } catch (e: unknown) {
+    const code = (e as { code?: number })?.code;
+    if (code === 404 || code === 410) return; // já foi apagado
+    throw e;
   }
-
-  return slotsLivres;
 }
 
 export async function getMonthAvailability(
   year: number,
   month: number
 ): Promise<Record<string, { manha: boolean; tarde: boolean }>> {
-  const auth = await getAuthorizedClient();
-  const calendar = google.calendar({ version: "v3", auth });
+  const calendar = await getCalendar();
+  const id = getCalendarId();
 
-  const monthStart = new Date(year, month - 1, 1, 0, 0, 0);
-  const monthEnd = new Date(year, month, 0, 23, 59, 59);
+  const mm = String(month).padStart(2, "0");
+  const totalDias = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
   const res = await calendar.freebusy.query({
     requestBody: {
-      timeMin: monthStart.toISOString(),
-      timeMax: monthEnd.toISOString(),
-      items: [{ id: "primary" }],
+      timeMin: orlandoToDate(`${year}-${mm}-01`, "00:00").toISOString(),
+      timeMax: orlandoToDate(
+        `${year}-${mm}-${String(totalDias).padStart(2, "0")}`,
+        "23:59"
+      ).toISOString(),
+      items: [{ id }],
     },
   });
 
-  const busyRaw = res.data.calendars?.primary?.busy || [];
-  const busy = busyRaw.map((b) => ({
+  const busy = getBusy(res.data, id).map((b) => ({
     start: new Date(b.start!),
     end: new Date(b.end!),
   }));
@@ -145,23 +164,24 @@ export async function getMonthAvailability(
     busy.some((b) => start < b.end && end > b.start);
 
   const result: Record<string, { manha: boolean; tarde: boolean }> = {};
-  const totalDias = monthEnd.getDate();
   const agora = new Date();
 
   for (let d = 1; d <= totalDias; d++) {
-    const dia = new Date(year, month - 1, d);
-    if (dia.getDay() === 0) continue; // não atende domingo
+    const dd = String(d).padStart(2, "0");
+    const dateStr = `${year}-${mm}-${dd}`;
 
-    const manhaStart = new Date(year, month - 1, d, 8, 0, 0);
-    const manhaEnd = new Date(year, month - 1, d, 12, 0, 0);
-    const tardeStart = new Date(year, month - 1, d, 13, 0, 0);
-    const tardeEnd = new Date(year, month - 1, d, 17, 0, 0);
+    // não atende domingo
+    if (new Date(Date.UTC(year, month - 1, d)).getUTCDay() === 0) continue;
 
-    const manhaLivre = manhaEnd > agora && !conflita(manhaStart, manhaEnd);
-    const tardeLivre = tardeEnd > agora && !conflita(tardeStart, tardeEnd);
+    const manhaIni = orlandoToDate(dateStr, "08:00");
+    const manhaFim = orlandoToDate(dateStr, "12:00");
+    const tardeIni = orlandoToDate(dateStr, "13:00");
+    const tardeFim = orlandoToDate(dateStr, "17:00");
+
+    const manhaLivre = manhaFim > agora && !conflita(manhaIni, manhaFim);
+    const tardeLivre = tardeFim > agora && !conflita(tardeIni, tardeFim);
 
     if (manhaLivre || tardeLivre) {
-      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       result[dateStr] = { manha: manhaLivre, tarde: tardeLivre };
     }
   }
