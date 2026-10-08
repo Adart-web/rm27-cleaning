@@ -2,6 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import {
+  conflitosDoHorario,
+  faixaDoBloqueio,
+  hhmmParaMin,
+  janelasLivres,
+  minParaHora12,
+  partesOrlando,
+  type Ocupacao,
+} from "@/lib/agenda";
+import { orlandoToDate } from "@/lib/time";
+import { addDias } from "@/lib/clientes";
 import { formatHora12, horaPadrao, opcoesHorario } from "@/lib/time";
 
 type Orcamento = {
@@ -154,6 +165,7 @@ export default function SolicitacoesPage() {
   const [filtro, setFiltro] = useState<Filtro>("acao");
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [copiado, setCopiado] = useState(false);
+  const [ocupDb, setOcupDb] = useState<Record<string, Ocupacao[]>>({});
 
   async function carregarDados() {
     setLoading(true);
@@ -169,6 +181,81 @@ export default function SolicitacoesPage() {
     carregarDados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Ocupação real da agenda (visitas confirmadas + bloqueios) nas datas dos pedidos em aberto
+  useEffect(() => {
+    const abertos = orcamentos.filter(
+      (o) => (o.status === "pendente" || o.status === "aguardando_pagamento") && o.data_escolhida
+    );
+    if (abertos.length === 0) {
+      setOcupDb({});
+      return;
+    }
+    const datas = abertos.map((o) => o.data_escolhida as string).sort();
+    const de = datas[0];
+    const ate = datas[datas.length - 1];
+
+    async function carregarOcupacao() {
+      const [agRes, blRes] = await Promise.all([
+        supabase
+          .from("agendamentos")
+          .select("data_hora, duracao_min, cliente_fixo_id, orcamento_id")
+          .eq("status", "confirmado")
+          .gte("data_hora", orlandoToDate(de, "00:00").toISOString())
+          .lt("data_hora", orlandoToDate(addDias(ate, 1), "00:00").toISOString()),
+        supabase.from("bloqueios").select("data, periodo, motivo").gte("data", de).lte("data", ate),
+      ]);
+
+      const ags = (agRes.data ?? []) as {
+        data_hora: string;
+        duracao_min: number | null;
+        cliente_fixo_id: string | null;
+        orcamento_id: string | null;
+      }[];
+      const fixoIds = [...new Set(ags.map((a) => a.cliente_fixo_id).filter((x): x is string => Boolean(x)))];
+      const { data: fixos } = fixoIds.length
+        ? await supabase.from("clientes_fixos").select("id, nome").in("id", fixoIds)
+        : { data: [] as { id: string; nome: string }[] };
+      const nomeFixo = new Map((fixos ?? []).map((f) => [f.id, f.nome]));
+
+      const mapa: Record<string, Ocupacao[]> = {};
+      const add = (data: string, o: Ocupacao) => {
+        (mapa[data] ||= []).push(o);
+      };
+
+      for (const a of ags) {
+        const p = partesOrlando(a.data_hora);
+        const dur = a.duracao_min ?? 120;
+        const nome = a.cliente_fixo_id
+          ? `visita fixa de ${nomeFixo.get(a.cliente_fixo_id) ?? "cliente fixo"}`
+          : `visita de ${orcamentos.find((x) => x.id === a.orcamento_id)?.nome_cliente ?? "cliente"}`;
+        add(p.data, { ini: p.min, fim: p.min + dur, rotulo: nome });
+      }
+      for (const b of (blRes.data ?? []) as { data: string; periodo: "dia" | "manha" | "tarde"; motivo: string | null }[]) {
+        const f = faixaDoBloqueio(b.periodo);
+        add(b.data, { ...f, rotulo: `bloqueio${b.motivo ? ` (${b.motivo})` : ""}` });
+      }
+      setOcupDb(mapa);
+    }
+    carregarOcupacao();
+  }, [orcamentos]);
+
+  // Tudo que ocupa um dia: agenda real + outros pedidos em aberto (exceto o próprio)
+  function ocupacoesDoDia(data: string, ignorarId: string): Ocupacao[] {
+    const lista = [...(ocupDb[data] ?? [])];
+    for (const x of orcamentos) {
+      if (x.id === ignorarId || x.data_escolhida !== data) continue;
+      if (x.status !== "pendente" && x.status !== "aguardando_pagamento") continue;
+      const ini = hhmmParaMin(x.hora_inicio || horaPadrao(x.periodo_escolhido));
+      const nome = x.nome_cliente || "outro cliente";
+      lista.push(
+        x.status === "aguardando_pagamento"
+          ? { ini, fim: ini + 120, rotulo: `pedido de ${nome} aguardando pagamento` }
+          : { ini, fim: ini + 120, rotulo: `pedido pendente de ${nome}`, suave: true }
+      );
+    }
+    return lista;
+  }
 
   function toggle(id: string) {
     setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -371,6 +458,51 @@ export default function SolicitacoesPage() {
                 </div>
               )}
 
+              {o.data_escolhida &&
+                (o.status === "pendente" || o.status === "aguardando_pagamento") &&
+                (() => {
+                  const hora =
+                    o.status === "pendente"
+                      ? horarios[o.id] ?? horaPadrao(o.periodo_escolhido)
+                      : o.hora_inicio || horaPadrao(o.periodo_escolhido);
+                  const ocup = ocupacoesDoDia(o.data_escolhida, o.id);
+                  const conf = conflitosDoHorario(ocup, hhmmParaMin(hora));
+                  if (conf.length === 0) {
+                    return (
+                      <div className="text-sm rounded-xl px-4 py-2 bg-[#E6F8F6] text-[#17695F] font-medium">
+                        Horário livre na agenda
+                      </div>
+                    );
+                  }
+                  const duro = conf.some((c) => !c.suave);
+                  const livres = janelasLivres(ocup.filter((c) => !c.suave));
+                  const sugestoes = [
+                    ...livres.manha.map((f) => `Manhã ${minParaHora12(f.ini)}–${minParaHora12(f.fim)}`),
+                    ...livres.tarde.map((f) => `Tarde ${minParaHora12(f.ini)}–${minParaHora12(f.fim)}`),
+                  ];
+                  return (
+                    <div
+                      className={`text-sm rounded-xl px-4 py-3 flex flex-col gap-1 ${
+                        duro ? "bg-[#FDECEC] text-[#A32F2F]" : "bg-[#FFF6DD] text-[#7A5A00]"
+                      }`}
+                    >
+                      <span className="font-semibold">
+                        {duro ? "Conflito de horário" : "Atenção: outro pedido no mesmo horário"}
+                      </span>
+                      {conf.map((c, i) => (
+                        <span key={i}>
+                          {c.rotulo} · {minParaHora12(c.ini)}–{minParaHora12(c.fim)}
+                        </span>
+                      ))}
+                      <span className="text-xs">
+                        {sugestoes.length > 0
+                          ? `Livre nesse dia: ${sugestoes.join(" · ")}`
+                          : "Sem horário livre nesse dia."}
+                      </span>
+                    </div>
+                  );
+                })()}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
                 {dados.telefone && (
                   <div>
@@ -440,6 +572,11 @@ export default function SolicitacoesPage() {
                         {opcoesHorario(o.periodo_escolhido).map((h) => (
                           <option key={h} value={h}>
                             {formatHora12(h)}
+                            {o.data_escolhida &&
+                            conflitosDoHorario(ocupacoesDoDia(o.data_escolhida, o.id), hhmmParaMin(h))
+                              .length > 0
+                              ? " · ocupado"
+                              : ""}
                           </option>
                         ))}
                       </select>
