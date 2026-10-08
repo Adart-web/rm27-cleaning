@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatHora12 } from "@/lib/time";
 import {
   DIA_LONGO,
   FREQUENCIA_LABEL,
   HORAS_INICIO,
+  addDias,
   avisoDePeriodo,
+  caiNaSemanaAtual,
   diaSemana,
   formatarDataCurta,
   formatarTelefoneUS,
+  hojeOrlando,
   normalizarTelefoneUS,
   proximasVisitas,
   type ClienteFixo,
@@ -31,13 +33,49 @@ const inputCls =
   "min-h-[48px] px-3 w-full rounded-xl border border-[#7F8999] bg-white text-base text-[#233041]";
 const labelCls = "text-sm font-semibold";
 
+type Resumo = {
+  criadas: number;
+  existentes: number;
+  removidas: number;
+  conflitos: string[];
+  erros: string[];
+};
+
+type Resultado = { titulo: string; resumo?: Resumo; falha?: string };
+
+async function sincronizar(
+  id: string,
+  recriar: boolean
+): Promise<{ resumo?: Resumo; falha?: string }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return { falha: "Sessão expirada. Entre de novo no painel." };
+
+  try {
+    const res = await fetch("/api/fixos/sincronizar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ clienteId: id, recriar }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { falha: json.error || "Erro ao criar as visitas." };
+    return { resumo: json.resumo as Resumo };
+  } catch {
+    return { falha: "Sem conexão com o servidor." };
+  }
+}
+
 export default function ClienteForm({ clienteId }: { clienteId?: string }) {
-  const router = useRouter();
   const editando = Boolean(clienteId);
 
   const [carregando, setCarregando] = useState(editando);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [resultado, setResultado] = useState<Resultado | null>(null);
   const [status, setStatus] = useState<StatusCliente>("ativo");
 
   const [nome, setNome] = useState("");
@@ -86,9 +124,13 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   }, [clienteId]);
 
   const dia = primeiraVisita ? diaSemana(primeiraVisita) : null;
+  const limite = addDias(hojeOrlando(), 56);
   const proximas =
-    primeiraVisita && dia !== 0 ? proximasVisitas(primeiraVisita, frequencia, 8) : [];
+    primeiraVisita && dia !== 0
+      ? proximasVisitas(primeiraVisita, frequencia, 8).filter((d) => d < limite)
+      : [];
   const aviso = avisoDePeriodo(horaInicio, duracaoMin);
+  const avisoSemana = !editando && primeiraVisita && caiNaSemanaAtual(primeiraVisita);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -134,23 +176,40 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
     };
 
     setSalvando(true);
-    const { error } = clienteId
-      ? await supabase.from("clientes_fixos").update(payload).eq("id", clienteId)
-      : await supabase.from("clientes_fixos").insert(payload);
-    setSalvando(false);
+    let id = clienteId;
 
-    if (error) {
-      setErro(`Erro ao salvar: ${error.message}`);
-      return;
+    if (clienteId) {
+      const { error } = await supabase.from("clientes_fixos").update(payload).eq("id", clienteId);
+      if (error) {
+        setSalvando(false);
+        setErro(`Erro ao salvar: ${error.message}`);
+        return;
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("clientes_fixos")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (error || !data) {
+        setSalvando(false);
+        setErro(`Erro ao salvar: ${error?.message ?? "sem resposta"}`);
+        return;
+      }
+      id = data.id as string;
     }
-    router.push("/admin/clientes");
+
+    // Em edição, as visitas futuras são recriadas pra refletir as mudanças
+    const r = await sincronizar(id as string, Boolean(clienteId));
+    setSalvando(false);
+    setResultado({ titulo: "Cliente salvo", ...r });
   }
 
   async function mudarStatus(novo: StatusCliente) {
     if (!clienteId) return;
     if (
       novo === "encerrado" &&
-      !window.confirm("Encerrar o contrato deste cliente? Ele sai da lista de clientes fixos.")
+      !window.confirm("Encerrar o contrato deste cliente? As visitas futuras saem da agenda.")
     ) {
       return;
     }
@@ -162,10 +221,79 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       setErro(`Erro: ${error.message}`);
       return;
     }
-    router.push("/admin/clientes");
+    const r = await sincronizar(clienteId, false);
+    const titulo =
+      novo === "pausado" ? "Cliente pausado" : novo === "ativo" ? "Cliente reativado" : "Contrato encerrado";
+    setStatus(novo);
+    setResultado({ titulo, ...r });
   }
 
   if (carregando) return <p className="text-[#5B6573]">Carregando...</p>;
+
+  if (resultado) {
+    const r = resultado.resumo;
+    const temProblema = Boolean(resultado.falha) || (r && (r.conflitos.length > 0 || r.erros.length > 0));
+    return (
+      <div className="max-w-3xl mx-auto flex flex-col gap-4">
+        <div className="bg-white border border-[#E6EAF2] rounded-2xl p-6 flex flex-col gap-4">
+          <h1 className="font-[family-name:var(--font-fraunces)] text-3xl">{resultado.titulo}</h1>
+
+          {resultado.falha && (
+            <p className="rounded-xl bg-[#FDE8E8] text-[#8A1F1F] px-4 py-3 text-sm">
+              {resultado.falha} O cliente foi salvo. As visitas faltantes são criadas na rodada
+              automática da manhã, ou salve de novo pra tentar agora.
+            </p>
+          )}
+
+          {r && (
+            <ul className="flex flex-col gap-1 text-[#233041]">
+              {r.criadas > 0 && <li>{r.criadas} visitas criadas no Google Calendar</li>}
+              {r.existentes > 0 && <li>{r.existentes} visitas já existiam</li>}
+              {r.removidas > 0 && <li>{r.removidas} visitas futuras removidas</li>}
+              {r.criadas === 0 && r.existentes === 0 && r.removidas === 0 && !temProblema && (
+                <li>Nenhuma visita nova nas próximas 8 semanas.</li>
+              )}
+            </ul>
+          )}
+
+          {r && r.conflitos.length > 0 && (
+            <div className="rounded-xl bg-[#FFF4DC] text-[#5C3B00] px-4 py-3 text-sm flex flex-col gap-1">
+              <strong>Conflito de horário (visita não criada):</strong>
+              {r.conflitos.map((c) => (
+                <span key={c}>{c}</span>
+              ))}
+            </div>
+          )}
+
+          {r && r.erros.length > 0 && (
+            <div className="rounded-xl bg-[#FDE8E8] text-[#8A1F1F] px-4 py-3 text-sm flex flex-col gap-1">
+              <strong>Erros:</strong>
+              {r.erros.map((c) => (
+                <span key={c}>{c}</span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/admin/clientes"
+              className="inline-flex items-center min-h-[48px] px-6 rounded-full bg-[#6B4FD1] text-white font-semibold"
+            >
+              Voltar pra lista
+            </Link>
+            {editando && (
+              <button
+                onClick={() => setResultado(null)}
+                className="min-h-[48px] px-5 rounded-full border border-[#E6EAF2] bg-white font-semibold"
+              >
+                Continuar editando
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-4">
@@ -185,10 +313,12 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
               className={`text-xs font-semibold px-3 py-1 rounded-full ${
                 status === "pausado"
                   ? "bg-[#FFE9B8] text-[#6B4300]"
+                  : status === "encerrado"
+                  ? "bg-[#FDE8E8] text-[#8A1F1F]"
                   : "bg-[#DFF5E8] text-[#1B6B3A]"
               }`}
             >
-              {status === "pausado" ? "Pausado" : "Ativo"}
+              {status === "pausado" ? "Pausado" : status === "encerrado" ? "Encerrado" : "Ativo"}
             </span>
           )}
         </div>
@@ -305,6 +435,13 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           <p className="text-sm rounded-xl bg-[#FFF4DC] text-[#5C3B00] px-4 py-2">{aviso}</p>
         )}
 
+        {avisoSemana && (
+          <p className="text-sm rounded-xl bg-[#FFF4DC] text-[#5C3B00] px-4 py-2">
+            Essa data cai nesta semana, que já foi confirmada. Tudo bem se o cliente já é ativo
+            ou se há uma vaga livre. Se for cliente novo, prefira a semana que vem.
+          </p>
+        )}
+
         <div className="flex flex-col gap-1.5">
           <label htmlFor="c-obs" className={labelCls}>Observações</label>
           <textarea
@@ -329,7 +466,9 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
 
         {proximas.length > 0 && (
           <div className="flex flex-col gap-2 rounded-xl bg-[#F5EFFF] px-4 py-3">
-            <span className="text-sm font-semibold text-[#4B34A8]">Próximas visitas (8)</span>
+            <span className="text-sm font-semibold text-[#4B34A8]">
+              Visitas que serão criadas (próximas 8 semanas)
+            </span>
             <div className="flex flex-wrap gap-1.5">
               {proximas.map((d) => (
                 <span key={d} className="text-sm bg-white border border-[#D9CFFA] rounded-full px-2.5 py-0.5">
@@ -373,7 +512,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
               Reativar
             </button>
           )}
-          {editando && (
+          {editando && status !== "encerrado" && (
             <button
               type="button"
               onClick={() => mudarStatus("encerrado")}

@@ -157,3 +157,19 @@ export function avisoDePeriodo(hhmm: string, duracaoMin: number): string | null 
   const fimHHMM = `${String(Math.floor(fim / 60)).padStart(2, "0")}:${String(fim % 60).padStart(2, "0")}`;
   return `Esse horário termina às ${formatHora12(fimHHMM)}, depois do fim do período (${limite === 720 ? "12:00 PM" : "5:00 PM"}).`;
 }
+
+// ---------- semana de trabalho ----------
+
+// Semana de trabalho (segunda a sábado) que contém a data
+export function semanaDe(dateStr: string): { inicio: string; fim: string } {
+  const dow = diaSemana(dateStr); // 0 = domingo
+  const desloc = dow === 0 ? -6 : 1 - dow;
+  const inicio = addDias(dateStr, desloc);
+  return { inicio, fim: addDias(inicio, 5) };
+}
+
+// A data cai na semana corrente (já confirmada com os clientes)?
+export function caiNaSemanaAtual(dateStr: string): boolean {
+  const { inicio, fim } = semanaDe(hojeOrlando());
+  return dateStr >= inicio && dateStr <= fim;
+}

@@ -188,3 +188,32 @@ export async function getMonthAvailability(
 
   return result;
 }
+
+// Intervalos ocupados na agenda entre duas datas (usado pela geração de visitas dos fixos).
+// A API do Google limita cada consulta a cerca de 2 meses, então vai em blocos de 31 dias.
+export async function getBusyIntervals(startISO: string, endISO: string) {
+  const calendar = await getCalendar();
+  const id = getCalendarId();
+  const out: { start: Date; end: Date }[] = [];
+
+  const fim = new Date(endISO).getTime();
+  let cursor = new Date(startISO).getTime();
+  const passo = 31 * 24 * 60 * 60 * 1000;
+
+  while (cursor < fim) {
+    const proximo = Math.min(cursor + passo, fim);
+    const res = await calendar.freebusy.query({
+      requestBody: {
+        timeMin: new Date(cursor).toISOString(),
+        timeMax: new Date(proximo).toISOString(),
+        items: [{ id }],
+      },
+    });
+    for (const b of getBusy(res.data, id)) {
+      out.push({ start: new Date(b.start!), end: new Date(b.end!) });
+    }
+    cursor = proximo;
+  }
+
+  return out;
+}
