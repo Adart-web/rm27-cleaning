@@ -12,6 +12,7 @@ import {
   avisoDePeriodo,
   caiNaSemanaAtual,
   diaSemana,
+  type Horario,
   formatarDataCurta,
   formatarTelefoneUS,
   hojeOrlando,
@@ -22,12 +23,19 @@ import {
   type StatusCliente,
 } from "@/lib/clientes";
 
-const DURACOES = [
-  { v: 90, l: "1 hora 30" },
-  { v: 120, l: "2 horas" },
-  { v: 150, l: "2 horas 30" },
-  { v: 180, l: "3 horas" },
-];
+type Slot = { data: string; hora: string; dur: string };
+
+// "2,5" ou "2.5" horas -> minutos (null se inválido). Aceita de 30 min a 12 h.
+function duracaoParaMin(texto: string): number | null {
+  const h = Number(texto.trim().replace(",", "."));
+  if (!Number.isFinite(h)) return null;
+  const min = Math.round(h * 60);
+  return min >= 30 && min <= 720 ? min : null;
+}
+
+function minParaTexto(min: number): string {
+  return String(Math.round((min / 60) * 100) / 100);
+}
 
 const inputCls =
   "min-h-[48px] px-3 w-full rounded-xl border border-[#7F8999] bg-white text-base text-[#233041]";
@@ -83,9 +91,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   const [endereco, setEndereco] = useState("");
   const [idioma, setIdioma] = useState<"en" | "pt">("en");
   const [frequencia, setFrequencia] = useState<Frequencia>("semanal");
-  const [primeiraVisita, setPrimeiraVisita] = useState("");
-  const [horaInicio, setHoraInicio] = useState("09:00");
-  const [duracaoMin, setDuracaoMin] = useState(120);
+  const [slots, setSlots] = useState<Slot[]>([{ data: "", hora: "09:00", dur: "2" }]);
   const [valor, setValor] = useState("");
   const [equipe, setEquipe] = useState(1);
   const [observacoes, setObservacoes] = useState("");
@@ -110,9 +116,14 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       setEndereco(c.endereco ?? "");
       setIdioma(c.idioma);
       setFrequencia(c.frequencia);
-      setPrimeiraVisita(c.primeira_visita);
-      setHoraInicio(c.hora_inicio);
-      setDuracaoMin(c.duracao_min);
+      setSlots([
+        { data: c.primeira_visita, hora: c.hora_inicio, dur: minParaTexto(c.duracao_min) },
+        ...(c.horarios_extras ?? []).map((h) => ({
+          data: h.primeira_visita,
+          hora: h.hora_inicio,
+          dur: minParaTexto(h.duracao_min),
+        })),
+      ]);
       setValor(String(c.valor));
       setEquipe(c.equipe);
       setObservacoes(c.observacoes ?? "");
@@ -123,14 +134,26 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
     carregar();
   }, [clienteId]);
 
-  const dia = primeiraVisita ? diaSemana(primeiraVisita) : null;
   const limite = addDias(hojeOrlando(), 56);
-  const proximas =
-    primeiraVisita && dia !== 0
-      ? proximasVisitas(primeiraVisita, frequencia, 8).filter((d) => d < limite)
-      : [];
-  const aviso = avisoDePeriodo(horaInicio, duracaoMin);
-  const avisoSemana = !editando && primeiraVisita && caiNaSemanaAtual(primeiraVisita);
+  const proximas = slots
+    .flatMap((sl) =>
+      sl.data && diaSemana(sl.data) !== 0 ? proximasVisitas(sl.data, frequencia, 8) : []
+    )
+    .filter((d) => d < limite)
+    .sort();
+  const avisoSemana = !editando && slots.some((sl) => sl.data && caiNaSemanaAtual(sl.data));
+
+  function mudarSlot(i: number, campo: keyof Slot, valor: string) {
+    setSlots((prev) => prev.map((sl, j) => (j === i ? { ...sl, [campo]: valor } : sl)));
+  }
+
+  function adicionarSlot() {
+    setSlots((prev) => [...prev, { data: "", hora: prev[prev.length - 1].hora, dur: prev[prev.length - 1].dur }]);
+  }
+
+  function removerSlot(i: number) {
+    setSlots((prev) => prev.filter((_, j) => j !== i));
+  }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -147,12 +170,27 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       setErro("Telefone dos EUA com 10 dígitos, por exemplo (407) 555-0142.");
       return;
     }
-    if (!primeiraVisita) {
-      setErro("Informe a data da primeira visita (ou da próxima).");
-      return;
+    const horarios: Horario[] = [];
+    for (let i = 0; i < slots.length; i++) {
+      const sl = slots[i];
+      const nomeVisita = slots.length > 1 ? `Visita ${i + 1}: ` : "";
+      if (!sl.data) {
+        setErro(`${nomeVisita}informe a data da primeira visita (ou da próxima).`);
+        return;
+      }
+      if (diaSemana(sl.data) === 0) {
+        setErro(`${nomeVisita}não atendemos aos domingos. Escolha outra data.`);
+        return;
+      }
+      const min = duracaoParaMin(sl.dur);
+      if (!min) {
+        setErro(`${nomeVisita}duração inválida. Digite em horas, de 0,5 a 12 (ex.: 2,5).`);
+        return;
+      }
+      horarios.push({ primeira_visita: sl.data, hora_inicio: sl.hora, duracao_min: min });
     }
-    if (diaSemana(primeiraVisita) === 0) {
-      setErro("Não atendemos aos domingos. Escolha outra data.");
+    if (new Set(horarios.map((h) => h.primeira_visita)).size !== horarios.length) {
+      setErro("Duas visitas estão na mesma data. Use dias diferentes.");
       return;
     }
     if (!valorNum || valorNum <= 0) {
@@ -166,9 +204,10 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       endereco: endereco.trim() || null,
       idioma,
       frequencia,
-      primeira_visita: primeiraVisita,
-      hora_inicio: horaInicio,
-      duracao_min: duracaoMin,
+      primeira_visita: horarios[0].primeira_visita,
+      hora_inicio: horarios[0].hora_inicio,
+      duracao_min: horarios[0].duracao_min,
+      horarios_extras: horarios.slice(1),
       valor: valorNum,
       equipe,
       observacoes: observacoes.trim() || null,
@@ -352,57 +391,111 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           <input id="c-end" value={endereco} onChange={(e) => setEndereco(e.target.value)} className={inputCls} />
         </div>
 
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="c-freq" className={labelCls}>Frequência</label>
+          <select
+            id="c-freq"
+            value={frequencia}
+            onChange={(e) => setFrequencia(e.target.value as Frequencia)}
+            className={inputCls}
+          >
+            <option value="semanal">{FREQUENCIA_LABEL.semanal}</option>
+            <option value="quinzenal">{FREQUENCIA_LABEL.quinzenal}</option>
+            <option value="mensal">{FREQUENCIA_LABEL.mensal}</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <span className={labelCls}>Dias e horários das visitas</span>
+
+          {slots.map((sl, i) => {
+            const d = sl.data ? diaSemana(sl.data) : null;
+            const min = duracaoParaMin(sl.dur);
+            const aviso = min ? avisoDePeriodo(sl.hora, min) : null;
+            return (
+              <div key={i} className="rounded-xl border border-[#E6EAF2] p-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-[#4B34A8]">
+                    {slots.length > 1 ? `Visita ${i + 1}` : "Visita"}
+                  </span>
+                  {i > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => removerSlot(i)}
+                      className="min-h-[44px] px-2 text-sm font-semibold text-[#9B1C1C]"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="flex flex-col gap-1.5 col-span-2 sm:col-span-1">
+                    <label htmlFor={`c-data-${i}`} className={labelCls}>Primeira visita (ou próxima)</label>
+                    <input
+                      id={`c-data-${i}`}
+                      type="date"
+                      value={sl.data}
+                      onChange={(e) => mudarSlot(i, "data", e.target.value)}
+                      className={inputCls}
+                    />
+                    {d !== null && (
+                      <span className={`text-xs ${d === 0 ? "text-[#9B1C1C]" : "text-[#5B6573]"}`}>
+                        {d === 0
+                          ? "Domingo: não atendemos."
+                          : `${DIA_LONGO[d]} · ${FREQUENCIA_LABEL[frequencia].toLowerCase()}`}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor={`c-hora-${i}`} className={labelCls}>Início</label>
+                    <select
+                      id={`c-hora-${i}`}
+                      value={sl.hora}
+                      onChange={(e) => mudarSlot(i, "hora", e.target.value)}
+                      className={inputCls}
+                    >
+                      {HORAS_INICIO.map((h) => (
+                        <option key={h} value={h}>{formatHora12(h)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor={`c-dur-${i}`} className={labelCls}>Duração (horas)</label>
+                    <input
+                      id={`c-dur-${i}`}
+                      inputMode="decimal"
+                      placeholder="2,5"
+                      value={sl.dur}
+                      onChange={(e) => mudarSlot(i, "dur", e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+
+                {aviso && (
+                  <p className="text-sm rounded-xl bg-[#FFF4DC] text-[#5C3B00] px-4 py-2">{aviso}</p>
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={adicionarSlot}
+            className="self-start min-h-[44px] px-4 rounded-full border border-[#6B4FD1] bg-white text-[#4B34A8] text-sm font-semibold"
+          >
+            + Adicionar outro dia/horário
+          </button>
+          <span className="text-xs text-[#5B6573]">
+            Use quando o cliente tem mais de uma visita por semana (ex.: terça de manhã e sexta à tarde).
+            O valor abaixo vale para cada visita.
+          </span>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="c-freq" className={labelCls}>Frequência</label>
-            <select
-              id="c-freq"
-              value={frequencia}
-              onChange={(e) => setFrequencia(e.target.value as Frequencia)}
-              className={inputCls}
-            >
-              <option value="semanal">{FREQUENCIA_LABEL.semanal}</option>
-              <option value="quinzenal">{FREQUENCIA_LABEL.quinzenal}</option>
-              <option value="mensal">{FREQUENCIA_LABEL.mensal}</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="c-data" className={labelCls}>Primeira visita (ou próxima)</label>
-            <input
-              id="c-data"
-              type="date"
-              value={primeiraVisita}
-              onChange={(e) => setPrimeiraVisita(e.target.value)}
-              className={inputCls}
-            />
-            {dia !== null && (
-              <span className={`text-xs ${dia === 0 ? "text-[#9B1C1C]" : "text-[#5B6573]"}`}>
-                {dia === 0
-                  ? "Domingo: não atendemos."
-                  : `${DIA_LONGO[dia]} · ${FREQUENCIA_LABEL[frequencia].toLowerCase()}`}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="c-hora" className={labelCls}>Início</label>
-            <select id="c-hora" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} className={inputCls}>
-              {HORAS_INICIO.map((h) => (
-                <option key={h} value={h}>{formatHora12(h)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="c-dur" className={labelCls}>Duração</label>
-            <select id="c-dur" value={duracaoMin} onChange={(e) => setDuracaoMin(Number(e.target.value))} className={inputCls}>
-              {DURACOES.map((d) => (
-                <option key={d.v} value={d.v}>{d.l}</option>
-              ))}
-            </select>
-          </div>
-
           <div className="flex flex-col gap-1.5">
             <label htmlFor="c-valor" className={labelCls}>Valor por visita</label>
             <input
@@ -430,10 +523,6 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
             </select>
           </div>
         </div>
-
-        {aviso && (
-          <p className="text-sm rounded-xl bg-[#FFF4DC] text-[#5C3B00] px-4 py-2">{aviso}</p>
-        )}
 
         {avisoSemana && (
           <p className="text-sm rounded-xl bg-[#FFF4DC] text-[#5C3B00] px-4 py-2">

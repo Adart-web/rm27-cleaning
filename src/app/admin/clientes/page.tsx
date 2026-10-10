@@ -3,14 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { formatHora12 } from "@/lib/time";
 import {
   CAPACIDADE_SEMANAL,
-  DIA_CURTO,
   FREQUENCIA_LABEL,
-  diaSemana,
+  diaEHoraDe,
   formatarDataCurta,
-  proximasVisitas,
+  proximaVisitaDe,
   visitasPorSemana,
   type ClienteFixo,
   type Frequencia,
@@ -71,11 +69,11 @@ export default function ClientesPage() {
   }, [clientes, busca, filtro]);
 
   function proxima(c: ClienteFixo): string {
-    return formatarDataCurta(proximasVisitas(c.primeira_visita, c.frequencia, 1)[0]);
+    return formatarDataCurta(proximaVisitaDe(c));
   }
 
   function diaEHora(c: ClienteFixo): string {
-    return `${DIA_CURTO[diaSemana(c.primeira_visita)]} · ${formatHora12(c.hora_inicio)}`;
+    return diaEHoraDe(c);
   }
 
   return (

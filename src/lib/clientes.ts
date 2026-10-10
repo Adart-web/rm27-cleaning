@@ -3,6 +3,13 @@ import { formatHora12 } from "./time";
 export type Frequencia = "semanal" | "quinzenal" | "mensal";
 export type StatusCliente = "ativo" | "pausado" | "encerrado";
 
+// Um dia/horário de visita. O cliente tem o principal (colunas normais) + extras (ex.: terça E sexta)
+export type Horario = {
+  primeira_visita: string;
+  hora_inicio: string;
+  duracao_min: number;
+};
+
 export type ClienteFixo = {
   id: string;
   nome: string;
@@ -13,6 +20,7 @@ export type ClienteFixo = {
   primeira_visita: string;
   hora_inicio: string;
   duracao_min: number;
+  horarios_extras: Horario[];
   valor: number;
   equipe: number;
   observacoes: string | null;
@@ -137,11 +145,26 @@ export function proximasVisitas(
 // ---------- capacidade e período ----------
 
 export function visitasPorSemana(
-  clientes: Pick<ClienteFixo, "frequencia" | "status">[]
+  clientes: (Pick<ClienteFixo, "frequencia" | "status"> & { horarios_extras?: Horario[] })[]
 ): number {
   return clientes
     .filter((c) => c.status === "ativo")
-    .reduce((soma, c) => soma + 7 / INTERVALO_DIAS[c.frequencia], 0);
+    .reduce(
+      (soma, c) => soma + ((1 + (c.horarios_extras ?? []).length) * 7) / INTERVALO_DIAS[c.frequencia],
+      0
+    );
+}
+
+// Todos os dias/horários do cliente: o principal + os extras
+export function horariosDe(
+  c: Pick<ClienteFixo, "primeira_visita" | "hora_inicio" | "duracao_min"> & {
+    horarios_extras?: Horario[];
+  }
+): Horario[] {
+  return [
+    { primeira_visita: c.primeira_visita, hora_inicio: c.hora_inicio, duracao_min: c.duracao_min },
+    ...(c.horarios_extras ?? []),
+  ];
 }
 
 function minutos(hhmm: string): number {
@@ -152,10 +175,17 @@ function minutos(hhmm: string): number {
 export function avisoDePeriodo(hhmm: string, duracaoMin: number): string | null {
   const ini = minutos(hhmm);
   const fim = ini + duracaoMin;
+  const fmt = (m: number) =>
+    formatHora12(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+
+  // Visita longa (mais de 4h) atravessa o almoço de propósito: só avisa se passar do fim do dia
+  if (duracaoMin > 240) {
+    return fim > 17 * 60 ? `Esse horário termina às ${fmt(fim)}, depois do fim do expediente (5:00 PM).` : null;
+  }
+
   const limite = ini < 12 * 60 ? 12 * 60 : 17 * 60;
   if (fim <= limite) return null;
-  const fimHHMM = `${String(Math.floor(fim / 60)).padStart(2, "0")}:${String(fim % 60).padStart(2, "0")}`;
-  return `Esse horário termina às ${formatHora12(fimHHMM)}, depois do fim do período (${limite === 720 ? "12:00 PM" : "5:00 PM"}).`;
+  return `Esse horário termina às ${fmt(fim)}, depois do fim do período (${limite === 720 ? "12:00 PM" : "5:00 PM"}).`;
 }
 
 // ---------- semana de trabalho ----------
@@ -172,4 +202,17 @@ export function semanaDe(dateStr: string): { inicio: string; fim: string } {
 export function caiNaSemanaAtual(dateStr: string): boolean {
   const { inicio, fim } = semanaDe(hojeOrlando());
   return dateStr >= inicio && dateStr <= fim;
+}
+// Próxima visita (data) considerando todos os dias/horários do cliente
+export function proximaVisitaDe(c: ClienteFixo): string {
+  return horariosDe(c)
+    .map((h) => proximasVisitas(h.primeira_visita, c.frequencia, 1)[0])
+    .sort()[0];
+}
+
+// Ex.: "Ter · 9:00 AM + Sex · 1:00 PM"
+export function diaEHoraDe(c: ClienteFixo): string {
+  return horariosDe(c)
+    .map((h) => `${DIA_CURTO[diaSemana(h.primeira_visita)]} · ${formatHora12(h.hora_inicio)}`)
+    .join(" + ");
 }

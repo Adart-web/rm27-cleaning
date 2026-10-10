@@ -11,6 +11,7 @@ import {
   diasEntre,
   formatarDataCurta,
   hojeOrlando,
+  horariosDe,
   type ClienteFixo,
 } from "./clientes";
 
@@ -33,10 +34,10 @@ function mensagemDe(e: unknown): string {
   return e instanceof Error ? e.message : "erro desconhecido";
 }
 
-function datasNoHorizonte(c: ClienteFixo, hoje: string): string[] {
-  const passo = INTERVALO_DIAS[c.frequencia];
+function datasNoHorizonte(primeiraVisita: string, frequencia: ClienteFixo["frequencia"], hoje: string): string[] {
+  const passo = INTERVALO_DIAS[frequencia];
   const limite = addDias(hoje, HORIZONTE_DIAS);
-  let atual = c.primeira_visita;
+  let atual = primeiraVisita;
   if (atual < hoje) {
     const k = Math.ceil(diasEntre(atual, hoje) / passo);
     atual = addDias(atual, k * passo);
@@ -133,8 +134,13 @@ export async function sincronizarClientes(
       .filter(Boolean)
       .join("\n");
 
-    for (const data of datasNoHorizonte(c, hoje)) {
-      const inicio = orlandoToDate(data, c.hora_inicio);
+    // cada dia/horário do cliente (ex.: terça de manhã e sexta à tarde) gera suas próprias visitas
+    const ocorrencias = horariosDe(c).flatMap((h) =>
+      datasNoHorizonte(h.primeira_visita, c.frequencia, hoje).map((data) => ({ data, h }))
+    );
+
+    for (const { data, h } of ocorrencias) {
+      const inicio = orlandoToDate(data, h.hora_inicio);
       if (inicio <= agora) continue;
 
       if (jaTem.has(inicio.getTime())) {
@@ -142,7 +148,7 @@ export async function sincronizarClientes(
         continue;
       }
 
-      const fim = new Date(inicio.getTime() + c.duracao_min * 60000);
+      const fim = new Date(inicio.getTime() + h.duracao_min * 60000);
       if (busy.some((b) => inicio < b.end && fim > b.start)) {
         resumo.conflitos.push(`${formatarDataCurta(data)}: horário ocupado na agenda`);
         continue;
@@ -161,7 +167,7 @@ export async function sincronizarClientes(
           cliente_fixo_id: c.id,
           tipo: "fixo",
           data_hora: inicio.toISOString(),
-          duracao_min: c.duracao_min,
+          duracao_min: h.duracao_min,
           google_event_id: eventId,
           status: "confirmado",
           equipe: c.equipe,
