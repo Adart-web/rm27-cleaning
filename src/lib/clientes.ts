@@ -192,9 +192,10 @@ export function avisoDePeriodo(hhmm: string, duracaoMin: number): string | null 
     return fim > 17 * 60 ? `Esse horário termina às ${fmt(fim)}, depois do fim do expediente (5:00 PM).` : null;
   }
 
-  const limite = ini < 12 * 60 ? 12 * 60 : 17 * 60;
+  // Manhã pode ir até 1:00 PM (o almoço também é horário de visita); quem começa às 12h ou depois vai até 5:00 PM
+  const limite = ini < 12 * 60 ? 13 * 60 : 17 * 60;
   if (fim <= limite) return null;
-  return `Esse horário termina às ${fmt(fim)}, depois do fim do período (${limite === 720 ? "12:00 PM" : "5:00 PM"}).`;
+  return `Esse horário termina às ${fmt(fim)}, depois do fim do período (${limite === 780 ? "1:00 PM" : "5:00 PM"}).`;
 }
 
 // ---------- semana de trabalho ----------
