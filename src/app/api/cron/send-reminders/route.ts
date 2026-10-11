@@ -5,13 +5,26 @@ import { addDias, hojeOrlando } from "@/lib/clientes";
 import { partesOrlando, minParaHHMM } from "@/lib/agenda";
 import { enfileirarMensagem } from "@/lib/mensagens";
 import { idiomaDe, textoLembrete } from "@/lib/mensagensTextos";
+import { diaSemana } from "@/lib/clientes";
+import { gerarConfirmacoes, inicioProximaSemana } from "@/lib/confirmacoes";
 
 // Roda de manhã: coloca na fila do painel o lembrete das visitas de amanhã (clientes avulsos).
 // Clientes fixos já recebem a confirmação de sábado, então não entram aqui.
+// Aos sábados, esta rotina também gera as confirmações da semana seguinte.
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Aos sábados, também coloca na fila a confirmação das visitas fixas da semana seguinte
+  let confirmacoes = null;
+  if (diaSemana(hojeOrlando()) === 6) {
+    try {
+      confirmacoes = await gerarConfirmacoes(inicioProximaSemana());
+    } catch (e: unknown) {
+      confirmacoes = { erro: e instanceof Error ? e.message : "erro" };
+    }
   }
 
   const dia = addDias(hojeOrlando(), 1);
@@ -68,5 +81,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, total: resultados.length, resultados });
+  return NextResponse.json({ success: true, total: resultados.length, resultados, confirmacoes });
 }

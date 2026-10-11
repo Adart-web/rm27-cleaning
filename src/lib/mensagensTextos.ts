@@ -108,3 +108,25 @@ export function telParaSms(telefone: string): string {
 export function linkSms(telefone: string, texto: string): string {
   return `sms:${telParaSms(telefone)}&body=${encodeURIComponent(texto)}`;
 }
+// Confirmação enviada no sábado com as visitas da semana seguinte (prazo: domingo 18h)
+export function textoConfirmacaoSabado(p: {
+  nome: string;
+  visitas: { data: string; hora: string }[];
+  idioma: Idioma;
+}): string {
+  const linhas = p.visitas
+    .map((v) => `- ${dataExtenso(v.data, p.idioma)} ${p.idioma === "pt" ? "às" : "at"} ${formatHora12(v.hora)}`)
+    .join("\n");
+  if (p.idioma === "pt") {
+    return `Oi ${p.nome}! Aqui é a RM27 Cleaning. Sua faxina da semana que vem:
+
+${linhas}
+
+Responda SIM para confirmar ou NÃO se precisar pular essa semana. Se não tivermos resposta até domingo às 18h, o horário pode ser oferecido para outro cliente. Obrigada!`;
+  }
+  return `Hi ${p.nome}! This is RM27 Cleaning. Your cleaning next week:
+
+${linhas}
+
+Please reply YES to confirm or NO if you need to skip this week. If we don't hear from you by Sunday 6 PM, the spot may be offered to another client. Thank you!`;
+}
