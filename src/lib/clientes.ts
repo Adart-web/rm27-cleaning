@@ -56,11 +56,10 @@ export const DIA_LONGO = [
 // 1 equipe x 2 períodos x 6 dias (segunda a sábado)
 export const CAPACIDADE_SEMANAL = 12;
 
-// Horários de início possíveis: 8:00–11:30 e 13:00–15:30
+// Horários de início possíveis para clientes fixos: 8:00 até 3:30 PM (inclui 12:00 e 12:30)
 export const HORAS_INICIO: string[] = (() => {
   const out: string[] = [];
   for (let m = 8 * 60; m <= 15 * 60 + 30; m += 30) {
-    if (m >= 12 * 60 && m < 13 * 60) continue;
     out.push(
       `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
     );
