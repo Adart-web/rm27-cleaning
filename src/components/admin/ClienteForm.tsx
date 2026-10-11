@@ -167,7 +167,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       return;
     }
     if (!tel) {
-      setErro("Telefone dos EUA com 10 dígitos, por exemplo (407) 555-0142.");
+      setErro("Telefone dos EUA com 10 dígitos, por exemplo (407) 555-0142. Número de outro país: comece com + (ex.: +55 19 99999-0000).");
       return;
     }
     const horarios: Horario[] = [];

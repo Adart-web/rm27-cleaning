@@ -75,6 +75,12 @@ function soDigitos(v: string): string {
 }
 
 export function normalizarTelefoneUS(v: string): string | null {
+  // Número de outro país: precisa começar com "+" (ex.: +55 19 99999-0000)
+  const t = v.trim();
+  if (t.startsWith("+") && !t.startsWith("+1")) {
+    const d = soDigitos(t);
+    return d.length >= 8 && d.length <= 15 ? `+${d}` : null;
+  }
   let d = soDigitos(v);
   if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
   if (d.length !== 10) return null;
@@ -82,6 +88,10 @@ export function normalizarTelefoneUS(v: string): string | null {
 }
 
 export function formatarTelefoneUS(v: string): string {
+  // Número de outro país: mantém como foi digitado (só "+" e dígitos)
+  const t = v.trim();
+  if (t.startsWith("+") && !t.startsWith("+1")) return `+${soDigitos(t).slice(0, 15)}`;
+
   let d = soDigitos(v);
   if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
   d = d.slice(0, 10);
