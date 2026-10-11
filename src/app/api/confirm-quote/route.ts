@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAvailability } from "@/lib/googleCalendar";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { orlandoToDate, formatHora12, formatDataEn, horaPadrao } from "@/lib/time";
+import { orlandoToDate, horaPadrao } from "@/lib/time";
+import { enfileirarMensagem } from "@/lib/mensagens";
+import { idiomaDe, textoSinal } from "@/lib/mensagensTextos";
 
 function extrairValor(mensagem: string): number {
   const match = mensagem.match(/Estimativa:\s*\$([\d.]+)/);
@@ -39,39 +41,22 @@ export async function POST(request: NextRequest) {
     }
 
     const valorTotal = extrairValor(orcamento.mensagem);
-    const sinal = (valorTotal / 2).toFixed(2);
-
-    const texto = `Hi ${orcamento.nome_cliente}! Your quote with RM27 Cleaning has been confirmed.
-
-Appointment: ${formatDataEn(orcamento.data_escolhida)} at ${formatHora12(hora)}
-Total estimate: $${valorTotal}
-Deposit required to secure your booking: $${sinal} (50%)
-
-Please send the deposit via Zelle to:
-rm27solutions@gmail.com
-
-Once sent, just reply here with the payment receipt/screenshot and we'll confirm your appointment.`;
-
-    const res = await fetch(
-      `${process.env.EVOLUTION_API_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.EVOLUTION_API_KEY!,
-        },
-        body: JSON.stringify({
-          number: orcamento.telefone,
-          text: texto,
-        }),
-      }
-    );
-
-    const resBody = await res.text();
-
-    if (!res.ok) {
-      return NextResponse.json({ error: `Evolution API error (${res.status}): ${resBody}` }, { status: 500 });
-    }
+    // Em vez de mandar pelo WhatsApp, a mensagem vai pra fila do painel (a dona envia por SMS)
+    await enfileirarMensagem({
+      tipo: "sinal",
+      nome: orcamento.nome_cliente,
+      telefone: orcamento.telefone,
+      idioma: idiomaDe(orcamento.idioma),
+      texto: textoSinal({
+        nome: orcamento.nome_cliente || "",
+        data: orcamento.data_escolhida,
+        hora,
+        total: valorTotal,
+        idioma: idiomaDe(orcamento.idioma),
+      }),
+      orcamentoId: orcamentoId,
+      chave: `sinal:${orcamentoId}`,
+    });
 
     const { data: updateData, error: updateError } = await supabaseAdmin
       .from("orcamentos")

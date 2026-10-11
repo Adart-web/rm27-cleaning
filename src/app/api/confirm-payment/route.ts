@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAvailability, createCalendarEvent } from "@/lib/googleCalendar";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { orlandoToDate, formatHora12, formatDataEn, horaPadrao } from "@/lib/time";
+import { orlandoToDate, horaPadrao } from "@/lib/time";
+import { enfileirarMensagem } from "@/lib/mensagens";
+import { idiomaDe, textoPagamento } from "@/lib/mensagensTextos";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,12 +39,16 @@ export async function POST(request: NextRequest) {
       endISO: end.toISOString(),
     });
 
-    const { error: insertError } = await supabaseAdmin.from("agendamentos").insert({
-      orcamento_id: orcamentoId,
-      data_hora: start.toISOString(),
-      google_event_id: eventId,
-      status: "confirmado",
-    });
+    const { data: novoAg, error: insertError } = await supabaseAdmin
+      .from("agendamentos")
+      .insert({
+        orcamento_id: orcamentoId,
+        data_hora: start.toISOString(),
+        google_event_id: eventId,
+        status: "confirmado",
+      })
+      .select("id")
+      .single();
 
     if (insertError) {
       return NextResponse.json({ error: `Insert agendamento failed: ${insertError.message}` }, { status: 500 });
@@ -58,31 +64,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Update orcamento failed" }, { status: 500 });
     }
 
-    const texto = `Payment received! ✅
-
-Your appointment with RM27 Cleaning is confirmed for:
-${formatDataEn(orcamento.data_escolhida)} at ${formatHora12(hora)}
-
-We'll send a reminder closer to the date. Thank you!`;
-
-    const waRes = await fetch(
-      `${process.env.EVOLUTION_API_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.EVOLUTION_API_KEY!,
-        },
-        body: JSON.stringify({
-          number: orcamento.telefone,
-          text: texto,
+    // Em vez de mandar pelo WhatsApp, a mensagem vai pra fila do painel (a dona envia por SMS)
+    try {
+      await enfileirarMensagem({
+        tipo: "pagamento",
+        nome: orcamento.nome_cliente,
+        telefone: orcamento.telefone,
+        idioma: idiomaDe(orcamento.idioma),
+        texto: textoPagamento({
+          data: orcamento.data_escolhida,
+          hora,
+          idioma: idiomaDe(orcamento.idioma),
         }),
-      }
-    );
-
-    if (!waRes.ok) {
-      const waBody = await waRes.text();
-      return NextResponse.json({ error: `Scheduled OK but WhatsApp failed: ${waBody}`, scheduled: true }, { status: 500 });
+        orcamentoId,
+        agendamentoId: novoAg?.id ?? null,
+        chave: `pagamento:${orcamentoId}`,
+      });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      return NextResponse.json({ error: `Agendado, mas ${message}`, scheduled: true }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, eventId });

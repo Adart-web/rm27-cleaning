@@ -68,6 +68,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const ehLogin = pathname.startsWith("/admin/login");
   const [pronto, setPronto] = useState(false);
   const [pendentes, setPendentes] = useState(0);
+  const [msgsPendentes, setMsgsPendentes] = useState(0);
 
   useEffect(() => {
     if (ehLogin) return;
@@ -90,6 +91,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         .select("id", { count: "exact", head: true })
         .in("status", ["pendente", "aguardando_pagamento"]);
       if (vivo) setPendentes(count ?? 0);
+
+      const { count: qtdMsgs } = await supabase
+        .from("mensagens")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pendente");
+      if (vivo) setMsgsPendentes(qtdMsgs ?? 0);
     }
 
     verificar();
@@ -114,7 +121,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     );
   }
 
-  const contagem = (href: string) => (href === "/admin/solicitacoes" ? pendentes : 0);
+  const contagem = (href: string) =>
+    href === "/admin/solicitacoes" ? pendentes : href === "/admin/mensagens" ? msgsPendentes : 0;
 
   return (
     <div className="min-h-screen bg-[#FBFCFF] text-[#233041]">
