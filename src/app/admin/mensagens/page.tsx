@@ -260,6 +260,9 @@ function ConfirmacoesSemana() {
   const [aviso, setAviso] = useState("");
   const [gerando, setGerando] = useState(false);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [remarcando, setRemarcando] = useState<string | null>(null);
+  const [novaData, setNovaData] = useState("");
+  const [novaHora, setNovaHora] = useState("08:00");
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
@@ -342,6 +345,42 @@ function ConfirmacoesSemana() {
       setErro((json.error as string) || "Não consegui salvar.");
       return;
     }
+    carregar();
+  }
+
+  function abrirRemarcar(v: VisitaFixa) {
+    const p = partesOrlando(v.data_hora);
+    setRemarcando(v.id);
+    setNovaData(p.data);
+    setNovaHora(`${String(Math.floor(p.min / 60)).padStart(2, "0")}:${String(p.min % 60).padStart(2, "0")}`);
+    setErro("");
+  }
+
+  async function remarcar(v: VisitaFixa, forcar = false) {
+    if (!novaData || !novaHora) {
+      setErro("Escolha a nova data e o novo horário.");
+      return;
+    }
+    setOcupado(v.id);
+    setErro("");
+    const { ok, json } = await chamar("/api/agendamentos/acao", {
+      id: v.id,
+      acao: "remarcar",
+      data: novaData,
+      hora: novaHora,
+      forcar,
+    });
+    setOcupado(null);
+    if (!ok) {
+      if (json.conflito && !forcar) {
+        if (window.confirm(`${json.error as string} Remarcar mesmo assim?`)) remarcar(v, true);
+        return;
+      }
+      setErro((json.error as string) || "Não consegui remarcar.");
+      return;
+    }
+    setRemarcando(null);
+    setAviso("Visita remarcada. A agenda e o Google Calendar já foram atualizados.");
     carregar();
   }
 
@@ -439,6 +478,41 @@ function ConfirmacoesSemana() {
                       Liberar horário
                     </button>
                   )}
+                  <button
+                    onClick={() => (remarcando === v.id ? setRemarcando(null) : abrirRemarcar(v))}
+                    disabled={ocupado === v.id}
+                    className="min-h-[44px] px-4 rounded-full border border-[#6B4FD1] bg-white text-[#4B34A8] text-sm font-semibold disabled:opacity-50"
+                  >
+                    Remarcar
+                  </button>
+                </div>
+              )}
+
+              {ativa && remarcando === v.id && (
+                <div className="flex flex-col gap-3 rounded-xl bg-[#F4F1FD] p-3">
+                  <span className="text-sm text-[#4B34A8] font-semibold">Remarcar só esta semana</span>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="date"
+                      value={novaData}
+                      onChange={(e) => setNovaData(e.target.value)}
+                      className="min-h-[44px] rounded-xl border border-[#E6EAF2] bg-white px-3 text-base"
+                    />
+                    <input
+                      type="time"
+                      step={1800}
+                      value={novaHora}
+                      onChange={(e) => setNovaHora(e.target.value)}
+                      className="min-h-[44px] rounded-xl border border-[#E6EAF2] bg-white px-3 text-base"
+                    />
+                  </div>
+                  <button
+                    onClick={() => remarcar(v)}
+                    disabled={ocupado === v.id}
+                    className="self-start min-h-[44px] px-5 rounded-full bg-[#6B4FD1] text-white text-sm font-semibold disabled:opacity-50"
+                  >
+                    {ocupado === v.id ? "Remarcando..." : "Salvar novo horário"}
+                  </button>
                 </div>
               )}
             </div>
