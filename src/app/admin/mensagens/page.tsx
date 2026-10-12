@@ -13,6 +13,7 @@ import {
 } from "@/lib/clientes";
 import { orlandoToDate } from "@/lib/time";
 import { minParaHora12, partesOrlando } from "@/lib/agenda";
+import { avisarAtualizacao, useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import { TIPO_LABEL, linkSms, telParaSms, type TipoMensagem } from "@/lib/mensagensTextos";
 
 type Mensagem = {
@@ -76,13 +77,10 @@ export default function MensagensPage() {
 
   useEffect(() => {
     carregar();
-    // ao voltar do app Mensagens para o painel, atualiza a fila
-    const aoVoltar = () => {
-      if (document.visibilityState === "visible") carregar();
-    };
-    document.addEventListener("visibilitychange", aoVoltar);
-    return () => document.removeEventListener("visibilitychange", aoVoltar);
   }, [carregar]);
+
+  // atualiza sozinho (e ao voltar do app Mensagens para o painel)
+  useAtualizacaoAuto(carregar, 15000);
 
   async function mudarStatus(id: string, status: Mensagem["status"]) {
     const { error } = await supabase
@@ -95,6 +93,7 @@ export default function MensagensPage() {
     }
     setAbertas((prev) => ({ ...prev, [id]: false }));
     carregar();
+    avisarAtualizacao();
   }
 
   async function descartar(m: Mensagem) {
@@ -137,7 +136,10 @@ export default function MensagensPage() {
         ).map((a) => (
           <button
             key={a.key}
-            onClick={() => setAba(a.key)}
+            onClick={() => {
+              setAba(a.key);
+              carregar();
+            }}
             className={`min-h-[44px] px-4 rounded-full border text-sm font-semibold ${
               aba === a.key
                 ? "bg-[#6B4FD1] text-white border-[#6B4FD1]"
@@ -149,7 +151,14 @@ export default function MensagensPage() {
         ))}
       </div>
 
-      {aba === "confirmacoes" && <ConfirmacoesSemana />}
+      {aba === "confirmacoes" && (
+        <ConfirmacoesSemana
+          onMudou={() => {
+            carregar();
+            avisarAtualizacao();
+          }}
+        />
+      )}
 
       {aba !== "confirmacoes" && erro && (
         <p className="text-sm rounded-xl bg-[#FDE8E8] text-[#8A1F1F] px-4 py-3">
@@ -247,7 +256,7 @@ type VisitaFixa = {
   status: string;
 };
 
-function ConfirmacoesSemana() {
+function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
   const inicio = useMemo(() => addDias(semanaDe(hojeOrlando()).inicio, 7), []);
   const fim = addDias(inicio, 5);
   // prazo: domingo anterior, 18h no horário de Orlando
@@ -293,6 +302,8 @@ function ConfirmacoesSemana() {
     carregar();
   }, [carregar]);
 
+  useAtualizacaoAuto(carregar, 15000);
+
   async function chamar(url: string, corpo?: object): Promise<{ ok: boolean; json: Record<string, unknown> }> {
     const {
       data: { session },
@@ -326,6 +337,7 @@ function ConfirmacoesSemana() {
         : "Nenhuma mensagem nova: ou já estão na fila, ou não há visitas fixas nessa semana."
     );
     carregar();
+    onMudou();
   }
 
   async function acao(v: VisitaFixa, a: "confirmou" | "cancelou" | "liberar") {

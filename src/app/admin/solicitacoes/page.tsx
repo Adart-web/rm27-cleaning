@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { avisarAtualizacao, useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import {
   conflitosDoHorario,
   faixaDoBloqueio,
@@ -167,15 +168,19 @@ export default function SolicitacoesPage() {
   const [copiado, setCopiado] = useState(false);
   const [ocupDb, setOcupDb] = useState<Record<string, Ocupacao[]>>({});
 
-  async function carregarDados() {
-    setLoading(true);
+  async function carregarDados(silencioso = false) {
+    if (!silencioso) setLoading(true);
     const { data } = await supabase
       .from("orcamentos")
       .select("*")
       .order("created_at", { ascending: false });
     if (data) setOrcamentos(data as Orcamento[]);
     setLoading(false);
+    if (!silencioso) avisarAtualizacao();
   }
+
+  // pedidos novos aparecem sozinhos (sem piscar a tela) e ao voltar para a aba
+  useAtualizacaoAuto(() => carregarDados(true), 20000);
 
   useEffect(() => {
     carregarDados();

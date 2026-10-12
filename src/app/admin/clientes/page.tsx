@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
@@ -26,19 +27,22 @@ export default function ClientesPage() {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
 
-  useEffect(() => {
-    async function carregar() {
-      const { data, error } = await supabase
-        .from("clientes_fixos")
-        .select("*")
-        .neq("status", "encerrado")
-        .order("nome");
-      if (error) setErro(error.message);
-      else setClientes((data ?? []) as ClienteFixo[]);
-      setLoading(false);
-    }
-    carregar();
+  const carregar = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("clientes_fixos")
+      .select("*")
+      .neq("status", "encerrado")
+      .order("nome");
+    if (error) setErro(error.message);
+    else setClientes((data ?? []) as ClienteFixo[]);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  useAtualizacaoAuto(carregar, 30000);
 
   const ativos = clientes.filter((c) => c.status === "ativo");
   const visitas = Math.round(visitasPorSemana(clientes) * 10) / 10;

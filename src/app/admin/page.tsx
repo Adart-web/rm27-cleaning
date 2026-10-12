@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import { orlandoToDate } from "@/lib/time";
 import {
   DIA_CURTO,
@@ -98,9 +99,11 @@ export default function AgendaPage() {
   const dias = useMemo(() => Array.from({ length: 6 }, (_, i) => addDias(inicio, i)), [inicio]);
   const hoje = hojeOrlando();
 
-  const carregar = useCallback(async (ini: string) => {
-    setCarregando(true);
-    setErro(null);
+  const carregar = useCallback(async (ini: string, silencioso = false) => {
+    if (!silencioso) {
+      setCarregando(true);
+      setErro(null);
+    }
     const fim = addDias(ini, 5);
     const de = orlandoToDate(ini, "00:00").toISOString();
     const ate = orlandoToDate(addDias(fim, 1), "00:00").toISOString();
@@ -165,6 +168,9 @@ export default function AgendaPage() {
   useEffect(() => {
     carregar(inicio);
   }, [inicio, carregar]);
+
+  // atualiza sozinho (sem piscar a tela) e ao voltar para a aba
+  useAtualizacaoAuto(() => carregar(inicio, true), 20000);
 
   // organiza por dia
   const porDia = useMemo(() => {

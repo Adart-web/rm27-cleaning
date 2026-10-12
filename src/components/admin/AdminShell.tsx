@@ -1,5 +1,6 @@
 "use client";
 
+import { EVENTO_ATUALIZAR } from "@/lib/useAtualizacao";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -85,7 +86,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       }
       if (!vivo) return;
       setPronto(true);
+      await contar();
+    }
 
+    async function contar() {
       const { count } = await supabase
         .from("orcamentos")
         .select("id", { count: "exact", head: true })
@@ -100,8 +104,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     }
 
     verificar();
+
+    // recontar as bolinhas do menu: a cada 20s, ao voltar para a aba e quando uma tela avisa que mudou algo
+    const recontar = () => {
+      if (document.visibilityState === "visible") contar();
+    };
+    const id = setInterval(recontar, 20000);
+    document.addEventListener("visibilitychange", recontar);
+    window.addEventListener("focus", recontar);
+    window.addEventListener(EVENTO_ATUALIZAR, recontar);
+
     return () => {
       vivo = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", recontar);
+      window.removeEventListener("focus", recontar);
+      window.removeEventListener(EVENTO_ATUALIZAR, recontar);
     };
   }, [ehLogin, pathname, router]);
 
