@@ -12,10 +12,16 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* O site e o painel só têm tema claro: sem isso, o celular em modo escuro deixa o texto claro em fundo branco */
+:root {
+  color-scheme: light;
+}
+
+@layer base {
+  input,
+  select,
+  textarea {
+    color: #233041;
   }
 }
 
