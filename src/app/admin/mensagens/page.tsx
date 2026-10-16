@@ -34,6 +34,8 @@ const TIPO_COR: Record<TipoMensagem, string> = {
   pagamento: "bg-[#E6F8F6] text-[#17695F]",
   lembrete: "bg-[#FFF4DC] text-[#5C3B00]",
   confirmacao_sabado: "bg-[#F5EFFF] text-[#4B34A8]",
+  remarcacao: "bg-[#E8F1FE] text-[#1F4F95]",
+  cancelamento: "bg-[#FDE8E8] text-[#8A1F1F]",
 };
 
 function formatarQuando(iso: string): string {

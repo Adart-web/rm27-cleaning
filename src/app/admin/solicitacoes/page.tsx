@@ -70,6 +70,7 @@ const statusLabel: Record<string, string> = {
   aguardando_pagamento: "Aguardando Pagamento",
   agendado: "Agendado",
   recusado: "Recusado",
+  cancelado: "Cancelado",
 };
 
 const servicoLabel: Record<string, string> = {
@@ -166,6 +167,12 @@ export default function SolicitacoesPage() {
   const [filtro, setFiltro] = useState<Filtro>("acao");
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [copiado, setCopiado] = useState(false);
+  // remarcar/cancelar visita avulsa já agendada
+  const [editando, setEditando] = useState<{ id: string; modo: "remarcar" | "cancelar" } | null>(null);
+  const [novaData, setNovaData] = useState("");
+  const [novaHora, setNovaHora] = useState("09:00");
+  const [sinalEscolha, setSinalEscolha] = useState<"devolver" | "manter" | "">("");
+  const [conflito, setConflito] = useState(false);
   const [ocupDb, setOcupDb] = useState<Record<string, Ocupacao[]>>({});
 
   async function carregarDados(silencioso = false) {
@@ -324,23 +331,80 @@ export default function SolicitacoesPage() {
     carregarDados();
   }
 
+  async function alterarVisita(o: Orcamento, forcar = false) {
+    if (!editando) return;
+    const modo = editando.modo;
+    if (modo === "remarcar" && (!novaData || !novaHora)) {
+      setErro((prev) => ({ ...prev, [o.id]: "Escolha a nova data e o horário." }));
+      return;
+    }
+    if (modo === "cancelar" && !sinalEscolha) {
+      setErro((prev) => ({ ...prev, [o.id]: "Escolha: devolver ou manter o sinal." }));
+      return;
+    }
+    setProcessando(o.id);
+    setErro((prev) => ({ ...prev, [o.id]: "" }));
+    setConflito(false);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const res = await fetch("/api/agendamentos/avulso", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
+        body: JSON.stringify({
+          orcamentoId: o.id,
+          acao: modo,
+          data: novaData,
+          hora: novaHora,
+          sinal: sinalEscolha || undefined,
+          forcar,
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (result.conflito) setConflito(true);
+        setErro((prev) => ({ ...prev, [o.id]: result.error || "Erro ao alterar a visita." }));
+        return;
+      }
+      setEditando(null);
+      setNovaData("");
+      setSinalEscolha("");
+      carregarDados();
+    } finally {
+      setProcessando(null);
+    }
+  }
+
+  function abrirEdicao(o: Orcamento, modo: "remarcar" | "cancelar") {
+    setEditando({ id: o.id, modo });
+    setNovaData(o.data_escolhida ?? "");
+    setNovaHora(o.hora_inicio || horaPadrao(o.periodo_escolhido));
+    setSinalEscolha("");
+    setConflito(false);
+    setErro((prev) => ({ ...prev, [o.id]: "" }));
+  }
+
   const qtdAcao = orcamentos.filter(
     (o) => o.status === "pendente" || o.status === "aguardando_pagamento"
   ).length;
   const qtdAgendados = orcamentos.filter((o) => o.status === "agendado").length;
-  const qtdRecusados = orcamentos.filter((o) => o.status === "recusado").length;
+  const qtdRecusados = orcamentos.filter((o) => o.status === "recusado" || o.status === "cancelado").length;
 
   const abas: { key: Filtro; label: string; count: number }[] = [
     { key: "acao", label: "Precisam de ação", count: qtdAcao },
     { key: "agendado", label: "Agendados", count: qtdAgendados },
-    { key: "recusado", label: "Recusados", count: qtdRecusados },
+    { key: "recusado", label: "Recusados / Cancelados", count: qtdRecusados },
     { key: "todos", label: "Todos", count: orcamentos.length },
   ];
 
   const visiveis = orcamentos.filter((o) => {
     if (filtro === "acao") return o.status === "pendente" || o.status === "aguardando_pagamento";
     if (filtro === "agendado") return o.status === "agendado";
-    if (filtro === "recusado") return o.status === "recusado";
+    if (filtro === "recusado") return o.status === "recusado" || o.status === "cancelado";
     return true;
   });
 
@@ -383,7 +447,8 @@ export default function SolicitacoesPage() {
       <div className="flex flex-col gap-4">
         {visiveis.map((o) => {
           const dados = montarDados(o);
-          const finalizado = o.status === "agendado" || o.status === "recusado";
+          const finalizado =
+            o.status === "agendado" || o.status === "recusado" || o.status === "cancelado";
           const recolhido = finalizado && !expandidos[o.id];
 
           if (recolhido) {
@@ -614,6 +679,118 @@ export default function SolicitacoesPage() {
                 >
                   {processando === o.id ? "Confirmando..." : "Pagamento confirmado"}
                 </button>
+              )}
+
+              {o.status === "agendado" && (
+                <div className="flex flex-col gap-3">
+                  {editando?.id !== o.id && (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => abrirEdicao(o, "remarcar")}
+                        className="flex-1 min-h-[48px] border border-[#6B4FD1] bg-white text-[#4B34A8] rounded-full text-sm font-semibold"
+                      >
+                        Remarcar visita
+                      </button>
+                      <button
+                        onClick={() => abrirEdicao(o, "cancelar")}
+                        className="flex-1 min-h-[48px] border border-[#E5B4B4] bg-white text-[#9B1C1C] rounded-full text-sm font-semibold"
+                      >
+                        Cancelar visita
+                      </button>
+                    </div>
+                  )}
+                  {editando?.id === o.id && editando.modo === "remarcar" && (
+                    <div className="flex flex-col gap-3 bg-[#F5EFFF] rounded-xl p-4">
+                      <span className="text-sm font-semibold">Nova data e horário</span>
+                      <div className="flex flex-wrap gap-3">
+                        <input
+                          type="date"
+                          value={novaData}
+                          onChange={(e) => setNovaData(e.target.value)}
+                          className="min-h-[44px] px-3 rounded-lg border border-[#7F8999] bg-white text-base text-[#233041]"
+                        />
+                        <input
+                          type="time"
+                          step={1800}
+                          value={novaHora}
+                          onChange={(e) => setNovaHora(e.target.value)}
+                          className="min-h-[44px] px-3 rounded-lg border border-[#7F8999] bg-white text-base text-[#233041]"
+                        />
+                      </div>
+                      <p className="text-xs text-[#5B6573]">
+                        O evento muda no Google Calendar e uma mensagem de remarcação vai para a fila de SMS.
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          onClick={() => alterarVisita(o)}
+                          disabled={processando === o.id}
+                          className="min-h-[44px] px-5 bg-[#6B4FD1] text-white rounded-full text-sm font-semibold disabled:opacity-50"
+                        >
+                          {processando === o.id ? "Salvando..." : "Remarcar"}
+                        </button>
+                        {conflito && (
+                          <button
+                            onClick={() => alterarVisita(o, true)}
+                            disabled={processando === o.id}
+                            className="min-h-[44px] px-5 border border-[#6B4FD1] bg-white text-[#4B34A8] rounded-full text-sm font-semibold"
+                          >
+                            Remarcar mesmo assim
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEditando(null)}
+                          className="min-h-[44px] px-4 text-sm text-[#5B6573] underline"
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {editando?.id === o.id && editando.modo === "cancelar" && (
+                    <div className="flex flex-col gap-3 bg-[#FDECEC] rounded-xl p-4">
+                      <span className="text-sm font-semibold">E o sinal que o cliente já pagou?</span>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        {(
+                          [
+                            ["devolver", "Devolver o sinal"],
+                            ["manter", "Manter o sinal"],
+                          ] as const
+                        ).map(([v, label]) => (
+                          <button
+                            key={v}
+                            onClick={() => setSinalEscolha(v)}
+                            className={`flex-1 min-h-[44px] rounded-full text-sm font-semibold border ${
+                              sinalEscolha === v
+                                ? "bg-[#9B1C1C] text-white border-[#9B1C1C]"
+                                : "bg-white text-[#233041] border-[#E5B4B4]"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-[#5B6573]">
+                        A visita sai do Google Calendar e uma mensagem de cancelamento vai para a fila de SMS.
+                        Se escolher devolver, a mensagem avisa do reembolso (a devolução em si você faz pelo Zelle).
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          onClick={() => alterarVisita(o)}
+                          disabled={processando === o.id}
+                          className="min-h-[44px] px-5 bg-[#9B1C1C] text-white rounded-full text-sm font-semibold disabled:opacity-50"
+                        >
+                          {processando === o.id ? "Cancelando..." : "Confirmar cancelamento"}
+                        </button>
+                        <button
+                          onClick={() => setEditando(null)}
+                          className="min-h-[44px] px-4 text-sm text-[#5B6573] underline"
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {finalizado && (

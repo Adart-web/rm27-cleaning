@@ -1,7 +1,13 @@
 // Textos das mensagens (SMS) e utilidades. Sem acesso ao banco: pode ser usado em qualquer lugar.
 import { formatDataEn, formatHora12 } from "./time";
 
-export type TipoMensagem = "sinal" | "pagamento" | "lembrete" | "confirmacao_sabado";
+export type TipoMensagem =
+  | "sinal"
+  | "pagamento"
+  | "lembrete"
+  | "confirmacao_sabado"
+  | "remarcacao"
+  | "cancelamento";
 export type Idioma = "en" | "pt";
 
 export const TIPO_LABEL: Record<TipoMensagem, string> = {
@@ -9,6 +15,8 @@ export const TIPO_LABEL: Record<TipoMensagem, string> = {
   pagamento: "Pagamento confirmado",
   lembrete: "Lembrete",
   confirmacao_sabado: "Confirmação de sábado",
+  remarcacao: "Visita remarcada",
+  cancelamento: "Visita cancelada",
 };
 
 export const ZELLE = "rm27solutions@gmail.com";
@@ -130,4 +138,41 @@ Responda SIM para confirmar ou NÃO se precisar pular essa semana. Se não tiver
 ${linhas}
 
 Please reply YES to confirm or NO if you need to skip this week. If we don't hear from you by Sunday 6 PM, the spot may be offered to another client. Thank you!`;
+}
+
+// Visita avulsa remarcada pela RM27
+export function textoRemarcacao(p: { data: string; hora: string; idioma: Idioma }): string {
+  const quando = `${dataExtenso(p.data, p.idioma)} ${p.idioma === "pt" ? "às" : "at"} ${formatHora12(p.hora)}`;
+  if (p.idioma === "pt") {
+    return `Sua visita com a RM27 Cleaning foi remarcada para:
+${quando}
+
+Qualquer dúvida, é só responder aqui. Obrigada!`;
+  }
+  return `Your RM27 Cleaning appointment has been rescheduled to:
+${quando}
+
+If you have any questions, just reply here. Thank you!`;
+}
+
+// Visita avulsa cancelada. `sinal` muda o texto: devolver (menciona reembolso) ou manter (não menciona).
+export function textoCancelamento(p: {
+  data: string;
+  hora: string;
+  idioma: Idioma;
+  sinal: "devolver" | "manter";
+}): string {
+  const quando = `${dataExtenso(p.data, p.idioma)} ${p.idioma === "pt" ? "às" : "at"} ${formatHora12(p.hora)}`;
+  if (p.idioma === "pt") {
+    return `Sua visita com a RM27 Cleaning (${quando}) foi cancelada.${
+      p.sinal === "devolver" ? "\n\nVamos devolver o valor do sinal que você enviou." : ""
+    }
+
+Quando quiser agendar de novo, é só pedir um novo orçamento. Obrigada!`;
+  }
+  return `Your RM27 Cleaning appointment (${quando}) has been cancelled.${
+    p.sinal === "devolver" ? "\n\nWe will refund the deposit you sent." : ""
+  }
+
+Whenever you'd like to book again, just request a new quote. Thank you!`;
 }
