@@ -104,9 +104,10 @@ export function telParaSms(telefone: string): string {
   return `+${d}`;
 }
 
-// Link que abre o app Mensagens do iPhone já com número e texto
-export function linkSms(telefone: string, texto: string): string {
-  return `sms:${telParaSms(telefone)}&body=${encodeURIComponent(texto)}`;
+// Link que abre o app Mensagens já com número e texto.
+// iPhone usa "&body=" e Android usa "?body=" (no Android o "&body=" vira parte do número).
+export function linkSms(telefone: string, texto: string, android = false): string {
+  return `sms:${telParaSms(telefone)}${android ? "?" : "&"}body=${encodeURIComponent(texto)}`;
 }
 // Confirmação enviada no sábado com as visitas da semana seguinte (prazo: domingo 18h)
 export function textoConfirmacaoSabado(p: {

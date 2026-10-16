@@ -59,6 +59,11 @@ export default function MensagensPage() {
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState<Aba>("pendentes");
   const [abertas, setAbertas] = useState<Record<string, boolean>>({});
+  const [android, setAndroid] = useState(false);
+
+  useEffect(() => {
+    setAndroid(/android/i.test(navigator.userAgent));
+  }, []);
 
   // lembra quais mensagens já foram abertas no app Mensagens, mesmo que o navegador
   // recarregue a página quando você volta do SMS
@@ -238,7 +243,7 @@ export default function MensagensPage() {
                   </button>
                 ) : (
                   <a
-                    href={linkSms(m.telefone, m.texto)}
+                    href={linkSms(m.telefone, m.texto, android)}
                     onClick={() => marcarAberta(m.id, true)}
                     className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#6B4FD1] text-white text-sm font-semibold"
                   >
