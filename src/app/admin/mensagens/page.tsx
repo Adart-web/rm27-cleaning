@@ -51,12 +51,39 @@ function telBonito(t: string): string {
   return s.startsWith("+1") && s.length === 12 ? formatarTelefoneUS(s.slice(2)) : s;
 }
 
+const CHAVE_ABERTAS = "rm27-mensagens-abertas";
+
 export default function MensagensPage() {
   const [msgs, setMsgs] = useState<Mensagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState<Aba>("pendentes");
   const [abertas, setAbertas] = useState<Record<string, boolean>>({});
+
+  // lembra quais mensagens já foram abertas no app Mensagens, mesmo que o navegador
+  // recarregue a página quando você volta do SMS
+  useEffect(() => {
+    try {
+      const salvo = window.localStorage.getItem(CHAVE_ABERTAS);
+      if (salvo) setAbertas(JSON.parse(salvo) as Record<string, boolean>);
+    } catch {
+      /* sem armazenamento: segue só em memória */
+    }
+  }, []);
+
+  function marcarAberta(id: string, valor: boolean) {
+    setAbertas((prev) => {
+      const prox = { ...prev };
+      if (valor) prox[id] = true;
+      else delete prox[id];
+      try {
+        window.localStorage.setItem(CHAVE_ABERTAS, JSON.stringify(prox));
+      } catch {
+        /* ignora */
+      }
+      return prox;
+    });
+  }
   const [copiado, setCopiado] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -91,7 +118,7 @@ export default function MensagensPage() {
       setErro(error.message);
       return;
     }
-    setAbertas((prev) => ({ ...prev, [id]: false }));
+    marcarAberta(id, false);
     carregar();
     avisarAtualizacao();
   }
@@ -212,7 +239,7 @@ export default function MensagensPage() {
                 ) : (
                   <a
                     href={linkSms(m.telefone, m.texto)}
-                    onClick={() => setAbertas((prev) => ({ ...prev, [m.id]: true }))}
+                    onClick={() => marcarAberta(m.id, true)}
                     className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#6B4FD1] text-white text-sm font-semibold"
                   >
                     Abrir no Mensagens
