@@ -367,11 +367,11 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
     onMudou();
   }
 
-  async function acao(v: VisitaFixa, a: "confirmou" | "cancelou" | "liberar") {
+  async function acao(v: VisitaFixa, a: "confirmou" | "liberar") {
     if (
       a === "liberar" &&
       !window.confirm(
-        `Liberar o horário de ${nomes[v.cliente_fixo_id ?? ""] || "este cliente"}? A visita sai da agenda e do Google Calendar, e o horário fica livre para um avulso.`
+        `${nomes[v.cliente_fixo_id ?? ""] || "O cliente"} cancelou essa semana? A visita sai da agenda e do Google Calendar, e o horário fica livre para um avulso. Nas próximas semanas ela continua normal.`
       )
     ) {
       return;
@@ -428,7 +428,7 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
   const prazoPassou = new Date() > prazo;
 
   function situacao(v: VisitaFixa): { texto: string; cor: string } {
-    if (v.status === "cancelado") return { texto: "Horário liberado", cor: "bg-[#EEF0F4] text-[#5B6573]" };
+    if (v.status === "cancelado") return { texto: "Cancelou · horário liberado", cor: "bg-[#EEF0F4] text-[#5B6573]" };
     if (v.confirmacao === "confirmada") return { texto: "Confirmou", cor: "bg-[#DFF5E8] text-[#1B6B3A]" };
     if (v.confirmacao === "cancelada") return { texto: "Cancelou", cor: "bg-[#FDE8E8] text-[#8A1F1F]" };
     if (v.confirmacao === "pendente") {
@@ -499,24 +499,13 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
                       Confirmou
                     </button>
                   )}
-                  {v.confirmacao !== "cancelada" && (
-                    <button
-                      onClick={() => acao(v, "cancelou")}
-                      disabled={ocupado === v.id}
-                      className="min-h-[44px] px-4 rounded-full border border-[#E5B4B4] bg-white text-[#9B1C1C] text-sm font-semibold disabled:opacity-50"
-                    >
-                      Cancelou
-                    </button>
-                  )}
-                  {v.confirmacao !== "confirmada" && (
-                    <button
-                      onClick={() => acao(v, "liberar")}
-                      disabled={ocupado === v.id}
-                      className="min-h-[44px] px-4 rounded-full bg-[#6B4FD1] text-white text-sm font-semibold disabled:opacity-50"
-                    >
-                      Liberar horário
-                    </button>
-                  )}
+                  <button
+                    onClick={() => acao(v, "liberar")}
+                    disabled={ocupado === v.id}
+                    className="min-h-[44px] px-4 rounded-full border border-[#E5B4B4] bg-white text-[#9B1C1C] text-sm font-semibold disabled:opacity-50"
+                  >
+                    Cancelou
+                  </button>
                   <button
                     onClick={() => (remarcando === v.id ? setRemarcando(null) : abrirRemarcar(v))}
                     disabled={ocupado === v.id}
