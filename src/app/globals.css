@@ -24,3 +24,147 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ---------- Efeitos do site ---------- */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 72px;
+}
+
+/* aparecer ao rolar */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* entrada do hero ao carregar */
+@keyframes subir {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hero-in {
+  opacity: 0;
+  animation: subir 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* brilho que se move no fundo (hero e CTA) */
+@keyframes flutuar {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(3%, -4%) scale(1.08);
+  }
+}
+.blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  pointer-events: none;
+  animation: flutuar 14s ease-in-out infinite;
+}
+
+@keyframes gradiente {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.cta-animado {
+  background-size: 200% 200%;
+  animation: gradiente 12s ease infinite;
+}
+
+/* cards */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.card-hover:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 36px rgba(140, 110, 232, 0.18);
+}
+.card-hover:active {
+  transform: scale(0.98);
+}
+.card-hover img {
+  transition: transform 0.6s ease;
+}
+.card-hover:hover img {
+  transform: scale(1.07);
+}
+
+/* botões */
+.btn-glow {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.btn-glow:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 8px 22px rgba(140, 110, 232, 0.4);
+}
+.btn-glow:active {
+  transform: scale(0.97);
+}
+
+/* link do menu com sublinhado animado */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  height: 2px;
+  width: 100%;
+  background: #8c6ee8;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
+.nav-link:hover::after {
+  transform: scaleX(1);
+}
+
+/* número dos passos "acende" quando o card aparece */
+.reveal .passo-num {
+  opacity: 0.12;
+  transition: opacity 0.9s ease 0.35s;
+}
+.reveal-in .passo-num {
+  opacity: 0.55;
+}
+
+/* quem prefere menos movimento, ou sem JavaScript, vê tudo parado e visível */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .hero-in {
+    opacity: 1;
+    animation: none;
+  }
+  .blob,
+  .cta-animado {
+    animation: none;
+  }
+  .card-hover,
+  .btn-glow,
+  .card-hover img {
+    transition: none;
+  }
+}
