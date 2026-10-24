@@ -99,21 +99,23 @@ export default function Home() {
       <Header />
 
       {/* Hero */}
-      <section className="relative overflow-hidden py-24 px-8 md:px-24">
-        <Image
-          src="/images/hero.jpg"
-          alt="RM27 Cleaning professional cleaning a home"
-          fill
-          priority
-          className="object-cover"
-        />
+      <section className="relative overflow-hidden pt-[340px] pb-16 md:py-24 px-8 md:px-24 bg-[#8F8AEA] md:bg-transparent">
+        <div className="absolute inset-x-0 top-0 h-[420px] md:inset-0 md:h-auto [mask-image:linear-gradient(to_bottom,black_72%,transparent)] md:[mask-image:none]">
+          <Image
+            src="/images/hero.jpg"
+            alt="RM27 Cleaning professional cleaning a home"
+            fill
+            priority
+            className="object-cover object-[64%_20%] md:object-center"
+          />
+        </div>
         <div className="absolute inset-0 bg-gradient-to-br from-[#8C6EE8]/85 via-[#69A9F4]/75 to-[#F39BC5]/75" />
         <div className="blob w-80 h-80 bg-[#F39BC5]/50 -top-16 right-[8%]" />
         <div className="blob w-72 h-72 bg-[#71D7CF]/40 bottom-[-4rem] left-[6%]" style={{ animationDelay: "-6s" }} />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_20%,rgba(243,155,197,0.45),transparent_55%),radial-gradient(circle_at_12%_85%,rgba(113,215,207,0.4),transparent_50%)]" />
         <div className="relative z-10 max-w-xl flex flex-col gap-6">
           <span style={{ animationDelay: "0.1s" }} className="hero-in self-start bg-white/15 backdrop-blur-sm text-white text-xs font-semibold tracking-wide px-4 py-2 rounded-full border border-white/30">Serving homes across the Orlando area</span>
-          <h1 style={{ animationDelay: "0.25s" }} className="hero-in font-[family-name:var(--font-fraunces)] font-medium text-4xl md:text-6xl leading-tight text-white">A cleaner home, a lighter life.</h1>
+          <h1 style={{ animationDelay: "0.25s" }} className="hero-in font-[family-name:var(--font-fraunces)] font-medium text-4xl md:text-6xl leading-tight text-white"><span className="block">A cleaner home,</span> <span className="block">a lighter life.</span></h1>
           <p style={{ animationDelay: "0.4s" }} className="hero-in text-lg leading-relaxed text-white/90 max-w-md">RM27 Cleaning takes the weekly to-do off your plate — one-time deep cleans or a regular visit you never have to think about.</p>
           <div style={{ animationDelay: "0.55s" }} className="hero-in flex gap-4 items-center flex-wrap">
             <Link href="/orcamento" className="btn-glow bg-[#F39BC5] text-white rounded-full px-8 py-4 text-base font-semibold hover:bg-[#EA82B4]">Get your free quote</Link>
