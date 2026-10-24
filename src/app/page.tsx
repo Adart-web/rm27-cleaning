@@ -25,8 +25,8 @@ const SERVICOS = [
   {
     title: "Carpet & Upholstery",
     desc: "Carpets, rugs, sofas, chairs and mattresses — deep cleaned and refreshed.",
-    image: "/images/about.jpg",
-    position: "object-bottom",
+    image: "/images/service-carpet.jpg",
+    position: "object-center",
   },
   {
     title: "Recurring Plans",
