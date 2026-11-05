@@ -698,22 +698,35 @@ function BloqueioForm({
 
 // ---------- resumo (já existia) ----------
 
-type Orc = { status: string; mensagem: string; created_at: string };
-type Ag = { data_hora: string; status: string };
+type Orc = { id: string; status: string; mensagem: string };
+type Ag = {
+  data_hora: string;
+  status: string;
+  orcamento_id: string | null;
+  cliente_fixo_id: string | null;
+};
 
 function Resumo() {
   const [orcs, setOrcs] = useState<Orc[]>([]);
   const [ags, setAgs] = useState<Ag[]>([]);
+  const [valorFixo, setValorFixo] = useState<Record<string, number>>({});
 
-  useEffect(() => {
-    async function carregar() {
-      const { data: o } = await supabase.from("orcamentos").select("status, mensagem, created_at");
-      const { data: a } = await supabase.from("agendamentos").select("data_hora, status");
-      if (o) setOrcs(o as Orc[]);
-      if (a) setAgs(a as Ag[]);
+  const carregar = useCallback(async () => {
+    const [o, a, f] = await Promise.all([
+      supabase.from("orcamentos").select("id, status, mensagem"),
+      supabase.from("agendamentos").select("data_hora, status, orcamento_id, cliente_fixo_id"),
+      supabase.from("clientes_fixos").select("id, valor"),
+    ]);
+    if (o.data) setOrcs(o.data as Orc[]);
+    if (a.data) setAgs(a.data as Ag[]);
+    if (f.data) {
+      const mapa: Record<string, number> = {};
+      for (const c of f.data as { id: string; valor: number | null }[]) mapa[c.id] = Number(c.valor) || 0;
+      setValorFixo(mapa);
     }
-    carregar();
   }, []);
+
+  useAtualizacaoAuto(carregar, 30000);
 
   const agora = new Date();
   const em7dias = new Date(agora.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -723,18 +736,20 @@ function Resumo() {
     const d = new Date(a.data_hora);
     return d >= agora && d <= em7dias && a.status === "confirmado";
   }).length;
-  const receitaMes = orcs
-    .filter((o) => {
-      const d = new Date(o.created_at);
-      return (
-        o.status === "agendado" &&
-        d.getMonth() === agora.getMonth() &&
-        d.getFullYear() === agora.getFullYear()
-      );
-    })
-    .reduce((soma, o) => soma + extrairValor(o.mensagem), 0);
-  const agendados = orcs.filter((o) => o.status === "agendado").length;
-  const conversao = orcs.length > 0 ? Math.round((agendados / orcs.length) * 100) : 0;
+
+  // Receita do mês = visitas do mês (não canceladas): avulsas pelo valor do orçamento, fixas pelo valor do cliente
+  const valorAvulso: Record<string, number> = {};
+  for (const o of orcs) valorAvulso[o.id] = extrairValor(o.mensagem);
+  let receitaAvulso = 0;
+  let receitaFixo = 0;
+  for (const a of ags) {
+    if (a.status !== "confirmado" && a.status !== "concluido") continue;
+    const d = new Date(a.data_hora);
+    if (d.getMonth() !== agora.getMonth() || d.getFullYear() !== agora.getFullYear()) continue;
+    if (a.cliente_fixo_id) receitaFixo += valorFixo[a.cliente_fixo_id] ?? 0;
+    else if (a.orcamento_id) receitaAvulso += valorAvulso[a.orcamento_id] ?? 0;
+  }
+  const receitaMes = receitaAvulso + receitaFixo;
 
   const card = "bg-white border border-[#E6EAF2] rounded-2xl p-5 flex flex-col gap-1";
   const num = "font-[family-name:var(--font-fraunces)] text-3xl";
@@ -754,8 +769,8 @@ function Resumo() {
         <span className={`${num} text-[#17695F]`}>${receitaMes.toFixed(0)}</span>
       </div>
       <div className={card}>
-        <span className="text-xs text-[#5B6573] font-medium">Taxa de conversão</span>
-        <span className={`${num} text-[#A32F6C]`}>{conversao}%</span>
+        <span className="text-xs text-[#5B6573] font-medium">Só fixos (mês)</span>
+        <span className={`${num} text-[#A32F6C]`}>${receitaFixo.toFixed(0)}</span>
       </div>
     </div>
   );

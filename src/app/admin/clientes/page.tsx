@@ -51,6 +51,7 @@ export default function ClientesPage() {
     { key: "todos", label: "Todos", count: clientes.length },
     { key: "semanal", label: "Semanais", count: ativos.filter((c) => c.frequencia === "semanal").length },
     { key: "quinzenal", label: "Quinzenais", count: ativos.filter((c) => c.frequencia === "quinzenal").length },
+    { key: "tres_semanas", label: "A cada 3 sem.", count: ativos.filter((c) => c.frequencia === "tres_semanas").length },
     { key: "mensal", label: "Mensais", count: ativos.filter((c) => c.frequencia === "mensal").length },
     { key: "pausados", label: "Pausados", count: clientes.filter((c) => c.status === "pausado").length },
   ];

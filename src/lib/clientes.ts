@@ -1,6 +1,6 @@
 import { formatHora12 } from "./time";
 
-export type Frequencia = "semanal" | "quinzenal" | "mensal";
+export type Frequencia = "semanal" | "quinzenal" | "tres_semanas" | "mensal";
 export type StatusCliente = "ativo" | "pausado" | "encerrado";
 
 // Um dia/horário de visita. O cliente tem o principal (colunas normais) + extras (ex.: terça E sexta)
@@ -32,6 +32,7 @@ export type ClienteFixo = {
 export const FREQUENCIA_LABEL: Record<Frequencia, string> = {
   semanal: "Semanal",
   quinzenal: "Quinzenal",
+  tres_semanas: "A cada 3 semanas",
   mensal: "Mensal",
 };
 
@@ -39,6 +40,7 @@ export const FREQUENCIA_LABEL: Record<Frequencia, string> = {
 export const INTERVALO_DIAS: Record<Frequencia, number> = {
   semanal: 7,
   quinzenal: 14,
+  tres_semanas: 21,
   mensal: 28,
 };
 

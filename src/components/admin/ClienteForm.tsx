@@ -401,6 +401,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           >
             <option value="semanal">{FREQUENCIA_LABEL.semanal}</option>
             <option value="quinzenal">{FREQUENCIA_LABEL.quinzenal}</option>
+            <option value="tres_semanas">{FREQUENCIA_LABEL.tres_semanas}</option>
             <option value="mensal">{FREQUENCIA_LABEL.mensal}</option>
           </select>
         </div>
