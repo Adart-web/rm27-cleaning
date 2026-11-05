@@ -13,6 +13,7 @@ import {
   type PeriodoBloqueio,
 } from "@/lib/agenda";
 import { telParaSms } from "@/lib/mensagensTextos";
+import AvulsoForm from "@/components/admin/AvulsoForm";
 
 // ---------- tipos ----------
 
@@ -67,6 +68,18 @@ function extrairValor(mensagem: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
+function detalheAvulso(oc: { tipo: string; mensagem: string }): string {
+  const servico = campoMensagem(oc.mensagem, "Serviço");
+  const nome = servicoLabel[servico] || servicoLabel[oc.tipo] || "Avulso";
+  const end = campoMensagem(oc.mensagem, "Endereço");
+  return end && end !== "não informado" ? `${nome} · ${end}` : nome;
+}
+
+function campoMensagem(mensagem: string, chave: string): string {
+  const m = mensagem.match(new RegExp(`(?:^|\\| )${chave}: ([^|]+)`));
+  return m ? m[1].trim() : "";
+}
+
 function diaExtenso(data: string): string {
   const [y, m, d] = data.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("pt-BR", {
@@ -99,9 +112,13 @@ async function chamarApi(url: string, corpo: unknown) {
 export default function AgendaMes({
   onBloquear,
   versao,
+  abrirDia,
+  onAbriuDia,
 }: {
   onBloquear: (data: string) => void;
   versao: number;
+  abrirDia?: string | null;
+  onAbriuDia?: () => void;
 }) {
   const hoje = hojeOrlando();
   const [mes, setMes] = useState<string>(() => hoje.slice(0, 7)); // "YYYY-MM"
@@ -110,6 +127,16 @@ export default function AgendaMes({
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [diaSel, setDiaSel] = useState<string | null>(null);
+  const [formAvulso, setFormAvulso] = useState<string | null>(null);
+
+  // abre o painel de um dia quando a página pede (ex.: depois de bloquear um dia com visitas)
+  useEffect(() => {
+    if (abrirDia) {
+      setMes(abrirDia.slice(0, 7));
+      setDiaSel(abrirDia);
+      onAbriuDia?.();
+    }
+  }, [abrirDia, onAbriuDia]);
 
   // primeira célula = domingo da semana do dia 1; última = sábado da semana do último dia
   const celulas = useMemo(() => {
@@ -182,7 +209,7 @@ export default function AgendaMes({
         return {
           id: a.id, data: p.data, ini: p.min, fim: p.min + dur, tipo: "avulso",
           nome: oc?.nome_cliente || "Cliente",
-          detalhe: oc ? servicoLabel[oc.tipo] || oc.tipo : "Avulso",
+          detalhe: oc ? detalheAvulso(oc) : "Avulso",
           telefone: oc?.telefone ?? null,
           valor: oc ? extrairValor(oc.mensagem) || null : null,
           orcamentoId: a.orcamento_id, confirmacao: null,
@@ -253,6 +280,12 @@ export default function AgendaMes({
             Hoje
           </button>
         )}
+        <button
+          onClick={() => setFormAvulso(hoje)}
+          className="h-11 px-4 rounded-xl border border-[#6B4FD1] bg-white text-[#4B34A8] text-sm font-semibold"
+        >
+          + Avulso
+        </button>
         <button
           onClick={() => onBloquear(hoje)}
           className="h-11 px-4 rounded-xl bg-[#6B4FD1] text-white text-sm font-semibold"
@@ -331,7 +364,16 @@ export default function AgendaMes({
           bloqueios={porDia.get(diaSel)?.bloqueios ?? []}
           onFechar={() => setDiaSel(null)}
           onBloquear={() => onBloquear(diaSel)}
+          onNovoAvulso={() => setFormAvulso(diaSel)}
           onMudou={aoMudar}
+        />
+      )}
+
+      {formAvulso && (
+        <AvulsoForm
+          dataInicial={formAvulso}
+          onFechar={() => setFormAvulso(null)}
+          onConcluido={aoMudar}
         />
       )}
     </div>
@@ -356,6 +398,7 @@ function PainelDia({
   bloqueios,
   onFechar,
   onBloquear,
+  onNovoAvulso,
   onMudou,
 }: {
   data: string;
@@ -364,6 +407,7 @@ function PainelDia({
   bloqueios: Bloqueio[];
   onFechar: () => void;
   onBloquear: () => void;
+  onNovoAvulso: () => void;
   onMudou: () => void;
 }) {
   const passado = data < hoje;
@@ -439,12 +483,22 @@ function PainelDia({
         {erro && <p className="text-xs text-[#A32F2F]">{erro}</p>}
 
         {!passado && diaSemana(data) !== 0 && (
-          <button
-            onClick={onBloquear}
-            className="h-11 rounded-xl border border-[#E6EAF2] text-sm font-semibold"
-          >
-            Bloquear este dia
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={onNovoAvulso}
+              className="h-11 rounded-xl border border-[#6B4FD1] text-[#4B34A8] text-sm font-semibold"
+            >
+              + Novo avulso neste dia
+            </button>
+            {!bloqueios.some((b) => b.periodo === "dia") && (
+              <button
+                onClick={onBloquear}
+                className="h-11 rounded-xl border border-[#E6EAF2] text-sm font-semibold"
+              >
+                Bloquear este dia
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

@@ -98,6 +98,8 @@ export default function AgendaPage() {
   const [formBloqueio, setFormBloqueio] = useState<{ data: string; periodo: PeriodoBloqueio } | null>(null);
   const [modo, setModo] = useState<"mes" | "semana">("mes");
   const [versao, setVersao] = useState(0);
+  const [abrirDia, setAbrirDia] = useState<string | null>(null);
+  const [abrirDepois, setAbrirDepois] = useState<string | null>(null);
 
   // lembra a visualização escolhida neste aparelho
   useEffect(() => {
@@ -234,7 +236,12 @@ export default function AgendaPage() {
       </div>
 
       {modo === "mes" && (
-        <AgendaMes onBloquear={(data) => setFormBloqueio({ data, periodo: "dia" })} versao={versao} />
+        <AgendaMes
+          onBloquear={(data) => setFormBloqueio({ data, periodo: "dia" })}
+          versao={versao}
+          abrirDia={abrirDia}
+          onAbriuDia={() => setAbrirDia(null)}
+        />
       )}
 
       {modo === "semana" && (
@@ -332,10 +339,16 @@ export default function AgendaPage() {
       {formBloqueio && (
         <BloqueioForm
           inicial={formBloqueio}
-          onFechar={() => setFormBloqueio(null)}
-          onConcluido={() => {
+          onFechar={() => {
+            setFormBloqueio(null);
+            // bloqueou um período que tinha visitas: abre o dia para remarcar na hora
+            if (abrirDepois && modo === "mes") setAbrirDia(abrirDepois);
+            setAbrirDepois(null);
+          }}
+          onConcluido={(r) => {
             carregar(inicio);
             setVersao((n) => n + 1);
+            setAbrirDepois(r.temConflito ? r.inicio : null);
           }}
         />
       )}
@@ -607,7 +620,7 @@ function BloqueioForm({
 }: {
   inicial: { data: string; periodo: PeriodoBloqueio };
   onFechar: () => void;
-  onConcluido: () => void;
+  onConcluido: (r: { inicio: string; temConflito: boolean }) => void;
 }) {
   const [de, setDe] = useState(inicial.data);
   const [ate, setAte] = useState(inicial.data);
@@ -651,7 +664,7 @@ function BloqueioForm({
     }
     setConflitos(null);
     setResultado(j.resumo);
-    onConcluido();
+    onConcluido({ inicio: de, temConflito: (j.resumo?.avisos?.length ?? 0) > 0 });
   }
 
   const campo = "h-11 rounded-xl border border-[#E6EAF2] px-3 bg-white w-full";
