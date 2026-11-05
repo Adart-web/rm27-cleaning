@@ -787,6 +787,10 @@ function Resumo() {
     }
   }, []);
 
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
   useAtualizacaoAuto(carregar, 30000);
 
   const agora = new Date();
