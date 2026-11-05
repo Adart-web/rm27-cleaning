@@ -755,7 +755,7 @@ function Resumo() {
   const num = "font-[family-name:var(--font-fraunces)] text-3xl";
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
       <div className={card}>
         <span className="text-xs text-[#5B6573] font-medium">Orçamentos pendentes</span>
         <span className={`${num} text-[#6B4FD1]`}>{pendentes}</span>
@@ -764,13 +764,9 @@ function Resumo() {
         <span className="text-xs text-[#5B6573] font-medium">Próximos 7 dias</span>
         <span className={`${num} text-[#3B82D6]`}>{semana}</span>
       </div>
-      <div className={card}>
+      <div className={`${card} col-span-2 md:col-span-1`}>
         <span className="text-xs text-[#5B6573] font-medium">Receita (mês)</span>
         <span className={`${num} text-[#17695F]`}>${receitaMes.toFixed(0)}</span>
-      </div>
-      <div className={card}>
-        <span className="text-xs text-[#5B6573] font-medium">Só fixos (mês)</span>
-        <span className={`${num} text-[#A32F6C]`}>${receitaFixo.toFixed(0)}</span>
       </div>
     </div>
   );
