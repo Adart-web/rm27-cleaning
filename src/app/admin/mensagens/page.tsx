@@ -14,7 +14,7 @@ import {
 import { orlandoToDate } from "@/lib/time";
 import { minParaHora12, partesOrlando } from "@/lib/agenda";
 import { avisarAtualizacao, useAtualizacaoAuto } from "@/lib/useAtualizacao";
-import { TIPO_LABEL, linkSms, telParaSms, type TipoMensagem } from "@/lib/mensagensTextos";
+import { TIPO_LABEL, linkSms, linkWhatsApp, telParaSms, type TipoMensagem } from "@/lib/mensagensTextos";
 
 type Mensagem = {
   id: string;
@@ -244,13 +244,24 @@ export default function MensagensPage() {
                     Já enviei, marcar como enviada
                   </button>
                 ) : (
-                  <a
-                    href={linkSms(m.telefone, m.texto, android)}
-                    onClick={() => marcarAberta(m.id, true)}
-                    className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#6B4FD1] text-white text-sm font-semibold"
-                  >
-                    Abrir no Mensagens
-                  </a>
+                  <>
+                    <a
+                      href={linkSms(m.telefone, m.texto, android)}
+                      onClick={() => marcarAberta(m.id, true)}
+                      className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#6B4FD1] text-white text-sm font-semibold"
+                    >
+                      Enviar por SMS
+                    </a>
+                    <a
+                      href={linkWhatsApp(m.telefone, m.texto)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => marcarAberta(m.id, true)}
+                      className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#1FA855] text-white text-sm font-semibold"
+                    >
+                      Enviar por WhatsApp
+                    </a>
+                  </>
                 )}
                 <button
                   onClick={() => copiar(m)}

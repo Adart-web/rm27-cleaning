@@ -117,6 +117,11 @@ export function telParaSms(telefone: string): string {
 export function linkSms(telefone: string, texto: string, android = false): string {
   return `sms:${telParaSms(telefone)}${android ? "?" : "&"}body=${encodeURIComponent(texto)}`;
 }
+// Link que abre o WhatsApp já com a conversa do número e o texto (envio manual, sem API)
+export function linkWhatsApp(telefone: string, texto: string): string {
+  return `https://wa.me/${telParaSms(telefone).replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
+}
+
 // Confirmação enviada no sábado com as visitas da semana seguinte (prazo: domingo 18h)
 export function textoConfirmacaoSabado(p: {
   nome: string;
