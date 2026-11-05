@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAtualizacaoAuto } from "@/lib/useAtualizacao";
+import AgendaMes from "@/components/admin/AgendaMes";
 import { orlandoToDate } from "@/lib/time";
 import {
   DIA_CURTO,
@@ -95,6 +96,23 @@ export default function AgendaPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [diaAberto, setDiaAberto] = useState<string | null>(null);
   const [formBloqueio, setFormBloqueio] = useState<{ data: string; periodo: PeriodoBloqueio } | null>(null);
+  const [modo, setModo] = useState<"mes" | "semana">("mes");
+  const [versao, setVersao] = useState(0);
+
+  // lembra a visualização escolhida neste aparelho
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem("rm27-agenda-modo");
+      if (salvo === "mes" || salvo === "semana") setModo(salvo);
+    } catch {}
+  }, []);
+
+  function escolherModo(m: "mes" | "semana") {
+    setModo(m);
+    try {
+      localStorage.setItem("rm27-agenda-modo", m);
+    } catch {}
+  }
 
   const dias = useMemo(() => Array.from({ length: 6 }, (_, i) => addDias(inicio, i)), [inicio]);
   const hoje = hojeOrlando();
@@ -193,10 +211,34 @@ export default function AgendaPage() {
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="font-[family-name:var(--font-fraunces)] text-3xl md:text-4xl">Agenda</h1>
+        <div className="flex rounded-full border border-[#E6EAF2] bg-white p-1">
+          {(
+            [
+              ["mes", "Mês"],
+              ["semana", "Semana"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => escolherModo(k)}
+              className={`min-h-[40px] px-4 rounded-full text-sm font-semibold ${
+                modo === k ? "bg-[#6B4FD1] text-white" : "text-[#233041]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {modo === "mes" && (
+        <AgendaMes onBloquear={(data) => setFormBloqueio({ data, periodo: "dia" })} versao={versao} />
+      )}
+
+      {modo === "semana" && (
+        <>
       {/* navegação */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -284,11 +326,17 @@ export default function AgendaPage() {
         )}
       </div>
 
+        </>
+      )}
+
       {formBloqueio && (
         <BloqueioForm
           inicial={formBloqueio}
           onFechar={() => setFormBloqueio(null)}
-          onConcluido={() => carregar(inicio)}
+          onConcluido={() => {
+            carregar(inicio);
+            setVersao((n) => n + 1);
+          }}
         />
       )}
 
