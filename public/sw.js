@@ -1,4 +1,4 @@
-// Service worker do painel RM27: recebe as notificações e abre a tela certa ao tocar.
+// Service worker do painel RM27 (v2): recebe as notificações e abre a tela certa ao tocar.
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
@@ -6,15 +6,19 @@ self.addEventListener("push", (event) => {
   let d = {};
   try {
     d = event.data ? event.data.json() : {};
-  } catch {}
+  } catch {
+    try {
+      d = { corpo: event.data ? event.data.text() : "" };
+    } catch {}
+  }
+  const titulo = d.titulo || "RM27 Painel";
+  const url = d.url || "/admin";
+  const opcoes = { body: d.corpo || "", data: { url } };
+  if (d.tag) opcoes.tag = d.tag;
   event.waitUntil(
-    self.registration.showNotification(d.titulo || "RM27 Painel", {
-      body: d.corpo || "",
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: d.tag || undefined,
-      data: { url: d.url || "/admin" },
-    })
+    self.registration
+      .showNotification(titulo, { ...opcoes, icon: "/icon-192.png", badge: "/icon-192.png" })
+      .catch(() => self.registration.showNotification(titulo, opcoes))
   );
 });
 
