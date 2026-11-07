@@ -1,4 +1,4 @@
-import webpush from "web-push";
+import * as webpushNs from "web-push";
 import { supabaseAdmin } from "./supabaseAdmin";
 
 export type PayloadPush = {
@@ -7,6 +7,9 @@ export type PayloadPush = {
   url?: string; // para onde o toque na notificação leva (padrão: /admin)
   tag?: string; // mesma tag substitui a notificação anterior em vez de empilhar
 };
+
+// Em alguns builds o import padrão do web-push chega vazio; pega o módulo certo nos dois casos.
+const webpush = ((webpushNs as unknown as { default?: typeof webpushNs }).default ?? webpushNs) as typeof webpushNs;
 
 let configurado = false;
 
