@@ -7,6 +7,7 @@ import { enfileirarMensagem } from "@/lib/mensagens";
 import { idiomaDe, textoLembrete } from "@/lib/mensagensTextos";
 import { diaSemana } from "@/lib/clientes";
 import { gerarConfirmacoes, inicioProximaSemana } from "@/lib/confirmacoes";
+import { enviarPush } from "@/lib/push";
 
 // Roda de manhã: coloca na fila do painel o lembrete das visitas de amanhã (clientes avulsos).
 // Clientes fixos já recebem a confirmação de sábado, então não entram aqui.
@@ -81,5 +82,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, total: resultados.length, resultados, confirmacoes });
+  // avisa no celular da dona que há mensagens esperando na fila (uma notificação só, com a contagem)
+  let push = null;
+  const { count: naFila } = await supabaseAdmin
+    .from("mensagens")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pendente");
+  if (naFila && naFila > 0) {
+    push = await enviarPush({
+      titulo: "Mensagens para enviar",
+      corpo: `${naFila} ${naFila > 1 ? "mensagens esperando" : "mensagem esperando"} na fila`,
+      url: "/admin/mensagens",
+      tag: "fila-mensagens",
+    });
+  }
+
+  return NextResponse.json({ success: true, total: resultados.length, resultados, confirmacoes, push });
 }

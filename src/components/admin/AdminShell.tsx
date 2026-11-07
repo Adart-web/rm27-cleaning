@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import AtivarNotificacoes from "@/components/admin/AtivarNotificacoes";
 
 type IconeNome = "agenda" | "mensagens" | "solicitacoes" | "clientes";
 
@@ -182,6 +183,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               );
             })}
           </nav>
+
+          <AtivarNotificacoes />
 
           <button
             onClick={sair}
