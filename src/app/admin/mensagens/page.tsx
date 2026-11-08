@@ -12,7 +12,7 @@ import {
   semanaDe,
 } from "@/lib/clientes";
 import { orlandoToDate } from "@/lib/time";
-import { minParaHora12, partesOrlando } from "@/lib/agenda";
+import { hhmmParaMin, minParaHora12, partesOrlando } from "@/lib/agenda";
 import { avisarAtualizacao, useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import { TIPO_LABEL, linkSms, linkWhatsApp, telParaSms, type TipoMensagem } from "@/lib/mensagensTextos";
 
@@ -297,15 +297,18 @@ type VisitaFixa = {
   id: string;
   data_hora: string;
   cliente_fixo_id: string | null;
-  confirmacao: "pendente" | "confirmada" | "cancelada" | null;
+  confirmacao: "pendente" | "confirmada" | "cancelada" | "remarcar" | null;
   status: string;
+  pedido_data: string | null;
+  pedido_hora: string | null;
+  pedido_nota: string | null;
 };
 
 function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
   const inicio = useMemo(() => addDias(semanaDe(hojeOrlando()).inicio, 7), []);
   const fim = addDias(inicio, 5);
-  // prazo: domingo anterior, 18h no horário de Orlando
-  const prazo = orlandoToDate(addDias(inicio, -1), "18:00");
+  // prazo: domingo anterior, 20h no horário de Orlando
+  const prazo = orlandoToDate(addDias(inicio, -1), "20:00");
 
   const [visitas, setVisitas] = useState<VisitaFixa[]>([]);
   const [nomes, setNomes] = useState<Record<string, string>>({});
@@ -321,7 +324,7 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
       .from("agendamentos")
-      .select("id, data_hora, cliente_fixo_id, confirmacao, status")
+      .select("id, data_hora, cliente_fixo_id, confirmacao, status, pedido_data, pedido_hora, pedido_nota")
       .eq("tipo", "fixo")
       .in("status", ["confirmado", "cancelado"])
       .gte("data_hora", orlandoToDate(inicio, "00:00").toISOString())
@@ -408,8 +411,9 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
   function abrirRemarcar(v: VisitaFixa) {
     const p = partesOrlando(v.data_hora);
     setRemarcando(v.id);
-    setNovaData(p.data);
-    setNovaHora(`${String(Math.floor(p.min / 60)).padStart(2, "0")}:${String(p.min % 60).padStart(2, "0")}`);
+    // se o cliente pediu outro horário pelo link, já vem preenchido
+    setNovaData(v.pedido_data || p.data);
+    setNovaHora(v.pedido_hora || `${String(Math.floor(p.min / 60)).padStart(2, "0")}:${String(p.min % 60).padStart(2, "0")}`);
     setErro("");
   }
 
@@ -449,6 +453,7 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
     if (v.status === "cancelado") return { texto: "Cancelou · horário liberado", cor: "bg-[#EEF0F4] text-[#5B6573]" };
     if (v.confirmacao === "confirmada") return { texto: "Confirmou", cor: "bg-[#DFF5E8] text-[#1B6B3A]" };
     if (v.confirmacao === "cancelada") return { texto: "Cancelou", cor: "bg-[#FDE8E8] text-[#8A1F1F]" };
+    if (v.confirmacao === "remarcar") return { texto: "Pediu outro horário", cor: "bg-[#EDE7FB] text-[#4B34A8]" };
     if (v.confirmacao === "pendente") {
       return prazoPassou
         ? { texto: "Sem resposta", cor: "bg-[#FDE8E8] text-[#8A1F1F]" }
@@ -465,7 +470,7 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
             Semana {formatarDataCurta(inicio)} – {formatarDataCurta(fim)}
           </span>
           <span className="text-sm text-[#5B6573]">
-            Prazo para os clientes responderem: domingo às 18:00 (horário de Orlando).
+            Prazo para os clientes responderem: domingo às 20:00 (horário de Orlando).
             {ativas.length > 0 && ` ${confirmadas} de ${ativas.length} confirmadas.`}
           </span>
         </div>
@@ -505,6 +510,14 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
                 </div>
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${sit.cor}`}>{sit.texto}</span>
               </div>
+
+              {ativa && v.confirmacao === "remarcar" && v.pedido_data && (
+                <p className="text-sm text-[#4B34A8] bg-[#F4F1FD] rounded-xl px-3 py-2">
+                  Quer: {DIA_CURTO[diaSemana(v.pedido_data)]} {formatarDataCurta(v.pedido_data)}
+                  {v.pedido_hora ? ` · ${minParaHora12(hhmmParaMin(v.pedido_hora))}` : ""}
+                  {v.pedido_nota ? ` — “${v.pedido_nota}”` : ""}
+                </p>
+              )}
 
               {ativa && (
                 <div className="flex flex-wrap gap-2">

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { orlandoToDate } from "./time";
 import { addDias, hojeOrlando, semanaDe } from "./clientes";
@@ -8,6 +9,11 @@ import { idiomaDe, textoConfirmacaoSabado } from "./mensagensTextos";
 // Segunda-feira da semana que vem (a semana de trabalho vai de segunda a sábado)
 export function inicioProximaSemana(): string {
   return addDias(semanaDe(hojeOrlando()).inicio, 7);
+}
+
+// Endereço público do site (usado nos links enviados aos clientes)
+export function urlDoSite(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://rm27-cleaning.vercel.app").replace(/\/+$/, "");
 }
 
 export type ResumoConfirmacoes = {
@@ -26,7 +32,7 @@ export async function gerarConfirmacoes(inicioSemana: string): Promise<ResumoCon
 
   const { data: visitas, error } = await supabaseAdmin
     .from("agendamentos")
-    .select("id, data_hora, cliente_fixo_id, confirmacao")
+    .select("id, data_hora, cliente_fixo_id, confirmacao, token_confirmacao")
     .eq("tipo", "fixo")
     .eq("status", "confirmado")
     .not("cliente_fixo_id", "is", null)
@@ -54,10 +60,19 @@ export async function gerarConfirmacoes(inicioSemana: string): Promise<ResumoCon
     }
 
     const doCliente = visitas.filter((v) => v.cliente_fixo_id === id);
-    const lista = doCliente.map((v) => {
+    // cada visita ganha um link próprio (token impossível de adivinhar), válido até domingo 20h
+    const expira = orlandoToDate(addDias(inicioSemana, -1), "20:00").toISOString();
+    const lista: { data: string; hora: string; link: string }[] = [];
+    for (const v of doCliente) {
+      const token = (v.token_confirmacao as string | null) ?? randomBytes(16).toString("hex");
+      const { error: tokErr } = await supabaseAdmin
+        .from("agendamentos")
+        .update({ token_confirmacao: token, token_expira_em: expira })
+        .eq("id", v.id);
+      if (tokErr) throw new Error(tokErr.message);
       const p = partesOrlando(v.data_hora);
-      return { data: p.data, hora: minParaHHMM(p.min) };
-    });
+      lista.push({ data: p.data, hora: minParaHHMM(p.min), link: `${urlDoSite()}/c/${token}` });
+    }
 
     await enfileirarMensagem({
       tipo: "confirmacao_sabado",

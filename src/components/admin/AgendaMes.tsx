@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { avisarAtualizacao, useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import { orlandoToDate } from "@/lib/time";
-import { addDias, diaSemana, hojeOrlando } from "@/lib/clientes";
+import { DIA_CURTO, addDias, diaSemana, formatarDataCurta, hojeOrlando } from "@/lib/clientes";
 import {
   faixaDoBloqueio,
+  hhmmParaMin,
   minParaHHMM,
   minParaHora12,
   partesOrlando,
@@ -29,6 +30,7 @@ type Visita = {
   valor: number | null;
   orcamentoId: string | null;
   confirmacao: string | null;
+  pedido: { data: string; hora: string; nota: string } | null;
 };
 
 type Bloqueio = { id: string; data: string; periodo: PeriodoBloqueio; motivo: string | null };
@@ -40,6 +42,9 @@ type AgRow = {
   cliente_fixo_id: string | null;
   orcamento_id: string | null;
   confirmacao: string | null;
+  pedido_data: string | null;
+  pedido_hora: string | null;
+  pedido_nota: string | null;
 };
 type FixoRow = { id: string; nome: string; endereco: string | null; telefone: string; valor: number };
 type OrcRow = { id: string; nome_cliente: string | null; telefone: string | null; tipo: string; mensagem: string };
@@ -164,7 +169,7 @@ export default function AgendaMes({
       const [agRes, blRes] = await Promise.all([
         supabase
           .from("agendamentos")
-          .select("id, data_hora, duracao_min, cliente_fixo_id, orcamento_id, confirmacao")
+          .select("id, data_hora, duracao_min, cliente_fixo_id, orcamento_id, confirmacao, pedido_data, pedido_hora, pedido_nota")
           .eq("status", "confirmado")
           .gte("data_hora", de)
           .lt("data_hora", ate),
@@ -204,6 +209,7 @@ export default function AgendaMes({
             nome: fx?.nome ?? "Cliente fixo", detalhe: fx?.endereco || "Cliente fixo",
             telefone: fx?.telefone ?? null, valor: fx?.valor ?? null,
             orcamentoId: null, confirmacao: a.confirmacao,
+            pedido: a.pedido_data ? { data: a.pedido_data, hora: a.pedido_hora ?? "", nota: a.pedido_nota ?? "" } : null,
           };
         }
         return {
@@ -212,7 +218,7 @@ export default function AgendaMes({
           detalhe: oc ? detalheAvulso(oc) : "Avulso",
           telefone: oc?.telefone ?? null,
           valor: oc ? extrairValor(oc.mensagem) || null : null,
-          orcamentoId: a.orcamento_id, confirmacao: null,
+          orcamentoId: a.orcamento_id, confirmacao: null, pedido: null,
         };
       });
 
@@ -518,8 +524,9 @@ function VisitaCard({ v, passado, onMudou }: { v: Visita; passado: boolean; onMu
 
   function abrir(m: "remarcar" | "cancelar") {
     setModo(m);
-    setNovaData(v.data);
-    setNovaHora(minParaHHMM(v.ini));
+    // se o cliente pediu outro horário pelo link, já vem preenchido
+    setNovaData(m === "remarcar" && v.pedido?.data ? v.pedido.data : v.data);
+    setNovaHora(m === "remarcar" && v.pedido?.hora ? v.pedido.hora : minParaHHMM(v.ini));
     setSinal("");
     setErro(null);
     setConflito(false);
@@ -599,14 +606,25 @@ function VisitaCard({ v, passado, onMudou }: { v: Visita; passado: boolean; onMu
               ? "text-[#1B6B3A]"
               : v.confirmacao === "cancelada"
                 ? "text-[#A32F2F]"
-                : "text-[#7A5A00]"
+                : v.confirmacao === "remarcar"
+                  ? "text-[#4B34A8]"
+                  : "text-[#7A5A00]"
           }`}
         >
           {v.confirmacao === "confirmada"
             ? "Cliente confirmou"
             : v.confirmacao === "cancelada"
               ? "Cliente disse que cancela"
-              : "Aguardando confirmação"}
+              : v.confirmacao === "remarcar"
+                ? "Cliente pediu outro horário"
+                : "Aguardando confirmação"}
+        </span>
+      )}
+      {fixo && v.confirmacao === "remarcar" && v.pedido && (
+        <span className="text-xs text-[#4B34A8]">
+          Quer: {DIA_CURTO[diaSemana(v.pedido.data)]} {formatarDataCurta(v.pedido.data)}
+          {v.pedido.hora ? ` · ${minParaHora12(hhmmParaMin(v.pedido.hora))}` : ""}
+          {v.pedido.nota ? ` — “${v.pedido.nota}”` : ""}
         </span>
       )}
 

@@ -125,24 +125,47 @@ export function linkWhatsApp(telefone: string, texto: string): string {
 // Confirmação enviada no sábado com as visitas da semana seguinte (prazo: domingo 18h)
 export function textoConfirmacaoSabado(p: {
   nome: string;
-  visitas: { data: string; hora: string }[];
+  visitas: { data: string; hora: string; link?: string }[];
   idioma: Idioma;
 }): string {
+  const pt = p.idioma === "pt";
+  const comLink = p.visitas.some((v) => v.link);
+  const unica = p.visitas.length === 1;
   const linhas = p.visitas
-    .map((v) => `- ${dataExtenso(v.data, p.idioma)} ${p.idioma === "pt" ? "às" : "at"} ${formatHora12(v.hora)}`)
+    .map((v) => {
+      const quando = `${dataExtenso(v.data, p.idioma)} ${pt ? "às" : "at"} ${formatHora12(v.hora)}`;
+      return v.link && !unica ? `- ${quando}\n  ${v.link}` : `- ${quando}`;
+    })
     .join("\n");
-  if (p.idioma === "pt") {
+
+  if (comLink) {
+    const linkUnico = unica ? p.visitas[0].link : null;
+    if (pt) {
+      return `Oi ${p.nome}! Aqui é a RM27 Cleaning. Sua faxina da semana que vem:
+
+${linhas}
+
+${linkUnico ? `Confirme, cancele ou peça outro horário por este link:\n${linkUnico}\n\n` : "Confirme, cancele ou peça outro horário pelo link de cada visita.\n\n"}Responda até domingo às 20h. Sem resposta, o horário pode ser oferecido para outro cliente. Obrigada!`;
+    }
+    return `Hi ${p.nome}! This is RM27 Cleaning. Your cleaning next week:
+
+${linhas}
+
+${linkUnico ? `Confirm, cancel or ask for another time here:\n${linkUnico}\n\n` : "Confirm, cancel or ask for another time using the link for each visit.\n\n"}Please reply by Sunday 8 PM. If we don't hear from you, the spot may be offered to another client. Thank you!`;
+  }
+
+  if (pt) {
     return `Oi ${p.nome}! Aqui é a RM27 Cleaning. Sua faxina da semana que vem:
 
 ${linhas}
 
-Responda SIM para confirmar ou NÃO se precisar pular essa semana. Se não tivermos resposta até domingo às 18h, o horário pode ser oferecido para outro cliente. Obrigada!`;
+Responda SIM para confirmar ou NÃO se precisar pular essa semana. Se não tivermos resposta até domingo às 20h, o horário pode ser oferecido para outro cliente. Obrigada!`;
   }
   return `Hi ${p.nome}! This is RM27 Cleaning. Your cleaning next week:
 
 ${linhas}
 
-Please reply YES to confirm or NO if you need to skip this week. If we don't hear from you by Sunday 6 PM, the spot may be offered to another client. Thank you!`;
+Please reply YES to confirm or NO if you need to skip this week. If we don't hear from you by Sunday 8 PM, the spot may be offered to another client. Thank you!`;
 }
 
 // Visita avulsa remarcada pela RM27
