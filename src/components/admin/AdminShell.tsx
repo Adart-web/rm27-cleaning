@@ -146,7 +146,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-[#FBFCFF] text-[#233041]">
       <header className="bg-white border-b border-[#E6EAF2]">
-        <div className="max-w-[1240px] mx-auto px-4 md:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-[1240px] mx-auto px-4 md:px-8 py-3 flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <span className="font-[family-name:var(--font-fraunces)] font-semibold text-2xl text-[#6B4FD1]">
               RM27
@@ -184,14 +184,15 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             })}
           </nav>
 
-          <AtivarNotificacoes />
-
-          <button
-            onClick={sair}
-            className="min-h-[44px] px-4 rounded-full border border-[#E6EAF2] bg-white text-sm text-[#5B6573]"
-          >
-            Sair
-          </button>
+          <div className="flex items-center gap-2">
+            <AtivarNotificacoes />
+            <button
+              onClick={sair}
+              className="min-h-[44px] px-4 rounded-full border border-[#E6EAF2] bg-white text-sm text-[#5B6573]"
+            >
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 

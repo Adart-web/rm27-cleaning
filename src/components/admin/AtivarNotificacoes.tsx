@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Estado = "carregando" | "sem-suporte" | "ios-instalar" | "desativado" | "negado" | "ativo";
@@ -18,7 +18,7 @@ async function token(): Promise<string> {
   return data.session?.access_token ?? "";
 }
 
-// Botões de notificação no topo do painel: ativar, testar e desativar
+// Sininho no topo do painel: abre um painel pequeno para ativar, testar e desativar os avisos
 export default function AtivarNotificacoes() {
   const [estado, setEstado] = useState<Estado>("carregando");
   const [ocupado, setOcupado] = useState(false);
@@ -123,53 +123,88 @@ export default function AtivarNotificacoes() {
     }
   }
 
-  const btn = "min-h-[44px] px-4 rounded-full border text-sm font-semibold disabled:opacity-60";
+  const btn = "min-h-[44px] px-4 rounded-full border text-sm font-semibold disabled:opacity-60 w-full";
+  const [aberto, setAberto] = useState(false);
+  const caixa = useRef<HTMLDivElement>(null);
+
+  // fecha o painel ao tocar fora ou apertar Esc
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent | TouchEvent) => {
+      if (caixa.current && !caixa.current.contains(e.target as Node)) setAberto(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setAberto(false);
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("touchstart", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("touchstart", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [aberto]);
 
   if (estado === "carregando" || estado === "sem-suporte") return null;
 
+  const ligado = estado === "ativo";
+
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div className="flex items-center gap-2">
-        {estado === "desativado" && (
-          <button onClick={ativar} disabled={ocupado} className={`${btn} border-[#6B4FD1] text-[#4B34A8] bg-white`}>
-            🔔 Ativar avisos
-          </button>
-        )}
-        {estado === "ativo" && (
-          <>
-            <button onClick={testar} disabled={ocupado} className={`${btn} border-[#E6EAF2] text-[#233041] bg-white`}>
-              🔔 Testar aviso
-            </button>
-            <button onClick={desativar} disabled={ocupado} className="min-h-[44px] px-2 text-xs text-[#5B6573] underline">
-              Desativar
-            </button>
-          </>
-        )}
-        {estado === "ios-instalar" && (
-          <button
-            onClick={() =>
-              mostrar(
-                "Para receber avisos no iPhone: toque em Compartilhar → “Adicionar à Tela de Início”, abra o painel pelo ícone e toque em “Ativar avisos”."
-              )
-            }
-            className={`${btn} border-[#6B4FD1] text-[#4B34A8] bg-white`}
-          >
-            🔔 Ativar avisos
-          </button>
-        )}
-        {estado === "negado" && (
-          <button
-            onClick={() =>
-              mostrar("As notificações estão bloqueadas. Libere em Ajustes do iPhone → Notificações → RM27 Painel.")
-            }
-            className={`${btn} border-[#E5B4B4] text-[#9B1C1C] bg-white`}
-          >
-            🔕 Avisos bloqueados
-          </button>
-        )}
-      </div>
-      {aviso && (
-        <p className="max-w-[280px] text-xs text-[#5B6573] bg-[#F5EFFF] rounded-lg px-3 py-2">{aviso}</p>
+    <div ref={caixa} className="relative">
+      <button
+        onClick={() => setAberto((v) => !v)}
+        aria-label="Avisos no celular"
+        aria-expanded={aberto}
+        className="relative h-11 w-11 rounded-full border border-[#E6EAF2] bg-white text-[#233041] flex items-center justify-center"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          {!ligado && <path d="M3 3l18 18" />}
+        </svg>
+        <span
+          className={`absolute top-1 right-1 h-2.5 w-2.5 rounded-full border-2 border-white ${
+            ligado ? "bg-[#17A34A]" : "bg-[#F59E0B]"
+          }`}
+        />
+      </button>
+
+      {aberto && (
+        <div className="absolute right-0 top-[52px] z-30 w-[290px] rounded-2xl border border-[#E6EAF2] bg-white p-4 shadow-lg flex flex-col gap-3">
+          {estado === "ativo" && (
+            <>
+              <p className="text-sm font-semibold text-[#1B6B3A]">Avisos ligados neste aparelho ✓</p>
+              <button onClick={testar} disabled={ocupado} className={`${btn} border-[#E6EAF2] text-[#233041] bg-white`}>
+                Testar aviso
+              </button>
+              <button onClick={desativar} disabled={ocupado} className="text-xs text-[#5B6573] underline self-start">
+                Desativar avisos
+              </button>
+            </>
+          )}
+          {estado === "desativado" && (
+            <>
+              <p className="text-sm text-[#5B6573]">
+                Receba no celular: orçamento novo, cancelamentos, pedidos de outro horário e mensagens para enviar.
+              </p>
+              <button onClick={ativar} disabled={ocupado} className={`${btn} border-[#6B4FD1] bg-[#6B4FD1] text-white`}>
+                Ativar avisos
+              </button>
+            </>
+          )}
+          {estado === "ios-instalar" && (
+            <p className="text-sm text-[#5B6573]">
+              Para receber avisos no iPhone: toque em Compartilhar → “Adicionar à Tela de Início”, abra o painel pelo
+              ícone e ative os avisos aqui.
+            </p>
+          )}
+          {estado === "negado" && (
+            <p className="text-sm text-[#9B1C1C]">
+              As notificações estão bloqueadas. Libere nas configurações do aparelho (Notificações → RM27 Painel) e
+              volte aqui.
+            </p>
+          )}
+          {aviso && <p className="text-xs text-[#5B6573] bg-[#F5EFFF] rounded-lg px-3 py-2">{aviso}</p>}
+        </div>
       )}
     </div>
   );

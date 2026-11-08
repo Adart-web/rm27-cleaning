@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAtualizacaoAuto } from "@/lib/useAtualizacao";
 import AgendaMes from "@/components/admin/AgendaMes";
+import PainelAtencao from "@/components/admin/PainelAtencao";
 import { orlandoToDate } from "@/lib/time";
 import {
   DIA_CURTO,
@@ -234,6 +235,13 @@ export default function AgendaPage() {
           ))}
         </div>
       </div>
+
+      <PainelAtencao
+        onMudou={() => {
+          setVersao((n) => n + 1);
+          carregar(inicio, true);
+        }}
+      />
 
       {modo === "mes" && (
         <AgendaMes
