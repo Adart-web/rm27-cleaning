@@ -183,6 +183,29 @@ ${quando}
 If you have any questions, just reply here. Thank you!`;
 }
 
+// Cliente fixo remarcado pela RM27: pede para confirmar (ou pedir outro horário) pelo link
+export function textoRemarcacaoFixo(p: { nome: string; data: string; hora: string; idioma: Idioma; link: string }): string {
+  const quando = `${dataExtenso(p.data, p.idioma)} ${p.idioma === "pt" ? "às" : "at"} ${formatHora12(p.hora)}`;
+  if (p.idioma === "pt") {
+    return `Oi ${p.nome}! Aqui é a RM27 Cleaning. Precisamos mudar a sua faxina para:
+
+${quando}
+
+Confirme, ou peça outro horário, por este link:
+${p.link}
+
+Obrigada pela compreensão!`;
+  }
+  return `Hi ${p.nome}! This is RM27 Cleaning. We need to move your cleaning to:
+
+${quando}
+
+Please confirm, or ask for another time, here:
+${p.link}
+
+Thank you for understanding!`;
+}
+
 // Visita avulsa cancelada. `sinal` muda o texto: devolver (menciona reembolso) ou manter (não menciona).
 export function textoCancelamento(p: {
   data: string;

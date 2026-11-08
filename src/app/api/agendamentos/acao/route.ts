@@ -3,7 +3,11 @@ import { exigirAdmin } from "@/lib/authAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createCalendarEvent, deleteCalendarEvent, getBusyIntervals } from "@/lib/googleCalendar";
 import { orlandoToDate } from "@/lib/time";
-import { diaSemana } from "@/lib/clientes";
+import { addDias, diaSemana } from "@/lib/clientes";
+import { enfileirarMensagem } from "@/lib/mensagens";
+import { idiomaDe, textoRemarcacao, textoRemarcacaoFixo } from "@/lib/mensagensTextos";
+import { urlDoSite } from "@/lib/confirmacoes";
+import { randomBytes } from "node:crypto";
 
 type Acao = "confirmou" | "cancelou" | "liberar" | "remarcar";
 
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const { data: ag } = await supabaseAdmin
       .from("agendamentos")
-      .select("id, status, tipo, google_event_id, data_hora, duracao_min, cliente_fixo_id, equipe")
+      .select("id, status, tipo, google_event_id, data_hora, duracao_min, cliente_fixo_id, equipe, confirmacao")
       .eq("id", id)
       .maybeSingle();
     if (!ag) return NextResponse.json({ error: "Visita não encontrada" }, { status: 404 });
@@ -42,7 +46,11 @@ export async function POST(request: NextRequest) {
       }
       const { error } = await supabaseAdmin
         .from("agendamentos")
-        .update({ confirmacao: acao === "confirmou" ? "confirmada" : "cancelada" })
+        .update(
+          acao === "confirmou"
+            ? { confirmacao: "confirmada", pedido_data: null, pedido_hora: null, pedido_nota: null }
+            : { confirmacao: "cancelada" }
+        )
         .eq("id", id);
       if (error) throw new Error(error.message);
       return NextResponse.json({ success: true });
@@ -95,7 +103,7 @@ export async function POST(request: NextRequest) {
       const { data: cliente } = ag.cliente_fixo_id
         ? await supabaseAdmin
             .from("clientes_fixos")
-            .select("nome, endereco, telefone, valor, observacoes")
+            .select("nome, endereco, telefone, valor, observacoes, idioma")
             .eq("id", ag.cliente_fixo_id)
             .maybeSingle()
         : { data: null };
@@ -118,6 +126,16 @@ export async function POST(request: NextRequest) {
       });
       if (!eventId) throw new Error("o Google não devolveu o ID do evento");
 
+      // pedido do cliente aceito: já está combinado. Remarcação por iniciativa da dona:
+      // o cliente recebe um link para confirmar ou pedir outro horário.
+      const pedidoDoCliente = ag.confirmacao === "remarcar";
+      const token = pedidoDoCliente ? null : randomBytes(16).toString("hex");
+      let expira: string | null = null;
+      if (token) {
+        const limite = orlandoToDate(addDias(data, -1), "20:00");
+        expira = (limite > new Date() ? limite : novoInicio).toISOString();
+      }
+
       const { error: insErr } = await supabaseAdmin.from("agendamentos").insert({
         cliente_fixo_id: ag.cliente_fixo_id,
         tipo: "fixo",
@@ -125,7 +143,9 @@ export async function POST(request: NextRequest) {
         duracao_min: duracao,
         google_event_id: eventId,
         status: "confirmado",
-        confirmacao: "confirmada",
+        confirmacao: pedidoDoCliente ? "confirmada" : "pendente",
+        token_confirmacao: token,
+        token_expira_em: expira,
         equipe: ag.equipe,
       });
       if (insErr) {
@@ -139,6 +159,31 @@ export async function POST(request: NextRequest) {
         .update({ status: "cancelado", confirmacao: "cancelada", google_event_id: null })
         .eq("id", id);
       if (upErr) throw new Error(upErr.message);
+
+      // deixa na fila a mensagem avisando o novo horário (com link, quando foi a dona que remarcou)
+      if (cliente?.telefone) {
+        try {
+          await enfileirarMensagem({
+            tipo: "remarcacao",
+            nome: cliente.nome,
+            telefone: cliente.telefone,
+            idioma: idiomaDe(cliente.idioma),
+            texto: token
+              ? textoRemarcacaoFixo({
+                  nome: String(cliente.nome ?? "").trim().split(/\s+/)[0] || "",
+                  data,
+                  hora,
+                  idioma: idiomaDe(cliente.idioma),
+                  link: `${urlDoSite()}/c/${token}`,
+                })
+              : textoRemarcacao({ data, hora, idioma: idiomaDe(cliente.idioma) }),
+            clienteFixoId: ag.cliente_fixo_id,
+            chave: `remarcacao:${id}:${novoInicio.toISOString()}`,
+          });
+        } catch (e) {
+          console.error("não consegui enfileirar o aviso de remarcação", e);
+        }
+      }
       return NextResponse.json({ success: true });
     }
 

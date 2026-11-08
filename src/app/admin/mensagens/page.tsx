@@ -53,44 +53,23 @@ function telBonito(t: string): string {
   return s.startsWith("+1") && s.length === 12 ? formatarTelefoneUS(s.slice(2)) : s;
 }
 
-const CHAVE_ABERTAS = "rm27-mensagens-abertas";
-
 export default function MensagensPage() {
   const [msgs, setMsgs] = useState<Mensagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState<Aba>("pendentes");
-  const [abertas, setAbertas] = useState<Record<string, boolean>>({});
   const [android, setAndroid] = useState(false);
 
   useEffect(() => {
     setAndroid(/android/i.test(navigator.userAgent));
   }, []);
 
-  // lembra quais mensagens já foram abertas no app Mensagens, mesmo que o navegador
-  // recarregue a página quando você volta do SMS
-  useEffect(() => {
-    try {
-      const salvo = window.localStorage.getItem(CHAVE_ABERTAS);
-      if (salvo) setAbertas(JSON.parse(salvo) as Record<string, boolean>);
-    } catch {
-      /* sem armazenamento: segue só em memória */
-    }
-  }, []);
-
-  function marcarAberta(id: string, valor: boolean) {
-    setAbertas((prev) => {
-      const prox = { ...prev };
-      if (valor) prox[id] = true;
-      else delete prox[id];
-      try {
-        window.localStorage.setItem(CHAVE_ABERTAS, JSON.stringify(prox));
-      } catch {
-        /* ignora */
-      }
-      return prox;
-    });
+  // Tocou em "Enviar por SMS/WhatsApp": a mensagem já vai para "Enviadas" (um instante depois,
+  // para não atrapalhar a abertura do app). Se desistir, "Voltar para a fila" na aba Enviadas.
+  function enviarEMarcar(id: string) {
+    setTimeout(() => mudarStatus(id, "enviada"), 1500);
   }
+
   const [copiado, setCopiado] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -125,7 +104,6 @@ export default function MensagensPage() {
       setErro(error.message);
       return;
     }
-    marcarAberta(id, false);
     carregar();
     avisarAtualizacao();
   }
@@ -236,33 +214,22 @@ export default function MensagensPage() {
 
             {m.status === "pendente" ? (
               <div className="flex flex-col sm:flex-row gap-2">
-                {abertas[m.id] ? (
-                  <button
-                    onClick={() => mudarStatus(m.id, "enviada")}
-                    className="flex-1 min-h-[48px] rounded-full bg-[#17695F] text-white text-sm font-semibold"
-                  >
-                    Já enviei, marcar como enviada
-                  </button>
-                ) : (
-                  <>
-                    <a
-                      href={linkSms(m.telefone, m.texto, android)}
-                      onClick={() => marcarAberta(m.id, true)}
-                      className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#6B4FD1] text-white text-sm font-semibold"
-                    >
-                      Enviar por SMS
-                    </a>
-                    <a
-                      href={linkWhatsApp(m.telefone, m.texto)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => marcarAberta(m.id, true)}
-                      className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#1FA855] text-white text-sm font-semibold"
-                    >
-                      Enviar por WhatsApp
-                    </a>
-                  </>
-                )}
+                <a
+                  href={linkSms(m.telefone, m.texto, android)}
+                  onClick={() => enviarEMarcar(m.id)}
+                  className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#6B4FD1] text-white text-sm font-semibold"
+                >
+                  Enviar por SMS
+                </a>
+                <a
+                  href={linkWhatsApp(m.telefone, m.texto)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => enviarEMarcar(m.id)}
+                  className="flex-1 min-h-[48px] inline-flex items-center justify-center rounded-full bg-[#1FA855] text-white text-sm font-semibold"
+                >
+                  Enviar por WhatsApp
+                </a>
                 <button
                   onClick={() => copiar(m)}
                   className="min-h-[48px] px-5 rounded-full border border-[#E6EAF2] bg-white text-sm font-semibold"
@@ -417,6 +384,32 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
     setErro("");
   }
 
+  // aceita o pedido do cliente (dia e hora que ele escolheu no link) com um toque
+  async function aceitarPedido(v: VisitaFixa, forcar = false) {
+    if (!v.pedido_data || !v.pedido_hora) return;
+    setOcupado(v.id);
+    setErro("");
+    const { ok, json } = await chamar("/api/agendamentos/acao", {
+      id: v.id,
+      acao: "remarcar",
+      data: v.pedido_data,
+      hora: v.pedido_hora,
+      forcar,
+    });
+    setOcupado(null);
+    if (!ok) {
+      if (json.conflito && !forcar) {
+        if (window.confirm(`${json.error as string} Remarcar mesmo assim?`)) aceitarPedido(v, true);
+        return;
+      }
+      setErro((json.error as string) || "Não consegui remarcar.");
+      return;
+    }
+    setAviso("Visita remarcada. Uma mensagem avisando o cliente foi para a fila.");
+    carregar();
+    onMudou();
+  }
+
   async function remarcar(v: VisitaFixa, forcar = false) {
     if (!novaData || !novaHora) {
       setErro("Escolha a nova data e o novo horário.");
@@ -521,13 +514,23 @@ function ConfirmacoesSemana({ onMudou }: { onMudou: () => void }) {
 
               {ativa && (
                 <div className="flex flex-wrap gap-2">
+                  {v.confirmacao === "remarcar" && v.pedido_data && v.pedido_hora && (
+                    <button
+                      onClick={() => aceitarPedido(v)}
+                      disabled={ocupado === v.id}
+                      className="min-h-[44px] px-4 rounded-full bg-[#6B4FD1] text-white text-sm font-semibold disabled:opacity-50"
+                    >
+                      Aceitar: {DIA_CURTO[diaSemana(v.pedido_data)]} {formatarDataCurta(v.pedido_data)} ·{" "}
+                      {minParaHora12(hhmmParaMin(v.pedido_hora))}
+                    </button>
+                  )}
                   {v.confirmacao !== "confirmada" && (
                     <button
                       onClick={() => acao(v, "confirmou")}
                       disabled={ocupado === v.id}
                       className="min-h-[44px] px-4 rounded-full bg-[#17695F] text-white text-sm font-semibold disabled:opacity-50"
                     >
-                      Confirmou
+                      {v.confirmacao === "remarcar" ? "Manter horário atual" : "Confirmou"}
                     </button>
                   )}
                   <button
